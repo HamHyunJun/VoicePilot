@@ -38,6 +38,8 @@ from voicepilot.commands.loader import parse_command_data
         ("오른쪽 크롬 화면에서 npm 열어줘", "focus_window", {"position": "right", "app": "크롬", "target": "npm"}),
         ("크롬 화면에서 구글지도 열어줘", "focus_window", {"app": "크롬", "target": "구글지도"}),
         ("크롬에서 npm 열어줘", "focus_window", {"app": "크롬", "target": "npm"}),
+        ("우측 크롬 화면에서 깃허브 열어줘", "focus_window", {"position": "right", "app": "크롬", "target": "깃허브"}),
+        ("좌측 화면에서 포크 열어줘", "focus_window", {"launch_if_missing": True, "position": "left", "target": "포크"}),
         ("클릭", "click", {}),
         ("클릭해줘", "click", {}),
         ("더블클릭", "click", {"count": 2}),

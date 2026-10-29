@@ -27,7 +27,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .                      # 전체 (macOS에서는 pyobjc 포함)
 pip install -r requirements-dev.txt   # 테스트용 최소 의존성
 
-python -m pytest                      # 단위 테스트 (현재 124개, macOS에서는 macOS 전용 1개 포함)
+python -m pytest                      # 단위 테스트 (현재 133개, macOS에서는 macOS 전용 1개 포함)
 voicepilot --text --dry-run           # 키보드 입력 + 가짜 조작부로 전체 흐름 확인 (어느 OS든 가능)
 voicepilot --text                     # 키보드 입력 + 실제 macOS 창 조작
 voicepilot                            # 마이크 음성 모드
@@ -81,10 +81,12 @@ CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행.
 - 창 포커스는 AX로 대상 창을 먼저 Raise한 뒤 앱을 활성화한다(같은 앱의 여러 창 중 정확한 창을 앞으로 가져오기 위해). AX 창은 위치·크기·제목으로 CG 창과 대응시킨다.
 - **매칭 동점 규칙:** 점수가 같으면 슬롯이 많은 패턴이 이긴다. 슬롯이 여럿인 패턴은 마지막 글자가 달라져도("열어주") 고정 문구에서 1글자를 뺀 점수로 허용한다. 점수 비교는 반올림(소수 3자리) 기준.
 - **모니터 지정 창 열기:** `{position}`(왼쪽/오른쪽/가운데/중앙/메인 → left/right/center/main)과 `{index}` 슬롯. "화면에서/화면의/모니터에서" 같은 조사 변형은 패턴을 따로 적는다. 번호 명령(`focus_window_on_monitor_index`)은 position 명령보다 위에 둔다.
-- **창 해석 보강:** 별칭 키와 자모 유사도 0.85 이상이면 같은 별칭으로 본다("클롬"→"크롬"). `window_match_threshold`는 0.7 (0.6이면 chrome이 code로 잘못 매칭됨).
+- **창 해석 보강:** 별칭 키와 자모 유사도 0.85 이상이면 같은 별칭으로 본다("클롬"→"크롬"). 유사도가 모자라는 오인식("기터브" 0.77)은 별칭으로 직접 추가한다. `우측/좌측`은 `{position}` 동의어. `window_match_threshold`는 0.7 (0.6이면 chrome이 code로 잘못 매칭됨).
 - **LaunchAgent 권한:** 자동 실행 시 마이크·손쉬운 사용 권한은 터미널이 아니라 실제 실행 파일(`.../Python.framework/.../Python.app`)에 줘야 한다. `.venv/bin/python` 링크는 소용없다. 파이썬 버전이 바뀌면 경로가 달라지므로 권한을 다시 주고 `--install-login-item`을 다시 실행한다.
-- **창 제목은 AX로 채운다.** 화면 기록 권한이 없으면 `kCGWindowName`이 비어서, `macos.py`가 손쉬운 사용(AX) API로 같은 위치·크기의 창 제목을 채운다(같은 위치 창이 여럿이면 앞쪽부터 순서대로 짝지움). 크롬은 창마다 현재 탭 제목만 보인다.
+- **창 제목은 AX로 채운다.** 화면 기록 권한이 없으면 `kCGWindowName`이 비어서, `macos.py`가 손쉬운 사용(AX) API로 같은 위치·크기의 창 제목을 채운다(같은 위치 창이 여럿이면 앞쪽부터 순서대로 짝지움). 창 제목에는 현재 탭 제목만 보이므로 가려진 탭은 위의 탭 전환으로 찾는다.
+- **브라우저 탭 전환:** 창 제목에서 못 찾은 이름은 `DesktopController.list_tabs/select_tab`(크롬 계열은 JXA `osascript -l JavaScript`, `macos.py`)으로 가려진 탭까지 제목·URL로 찾는다. **앱 이름이 아니라 pid로 지정한다(`Application(pid)`)** — ClaudeBoard가 `--headless` 크롬을 띄우는 동안 이름(`tell application "Google Chrome"`)으로 지정하면 다른 인스턴스가 응답해 창 1개짜리 about:blank가 돌아왔다. 탭 창과 CG 창은 위치·크기로 짝지운다. `select_tab`이 `set index of window … to 1`과 `activate`로 창도 앞으로 가져오므로 그 뒤에 `focus_window`를 부르지 않는다(launchd 환경에서 `NSRunningApplication`이 프로세스를 못 찾는 일이 있었음). 자동화 권한이 없으면(-1743) 안내 문구가 실패 메시지에 붙는다. Safari 미지원.
 - **앱 안에서 창 고르기:** `{app}` 슬롯 명령("크롬 화면에서 npm 열어줘", "오른쪽 크롬 화면에서 …")은 앱을 먼저 정하고 그 앱의 창들 중 제목으로 target을 찾는다. 꺼진 앱을 실행하지 않는다. 한글 이름이 영어 제목과 다르면 `aliases`에 추가한다.
+- **별칭 값은 유사도로 비교하지 않는다.** 말한 이름만 자모 유사도로 비교하고, 별칭 값은 정확히 일치·포함만 본다(`google.com/maps`가 앱 이름 `Google Chrome`과 0.72로 비슷하다고 판단돼 지도 탭 대신 엉뚱한 크롬 창으로 이동한 적이 있음). 앱을 정한 뒤 그 앱의 창을 고를 때는 `titles_only`로 제목만 본다. URL 형태 별칭은 도메인별로 적는다(`google.co.kr/maps`).
 - **슬롯 규칙:** 슬롯 두 개 사이의 공백은 반드시 있어야 나뉜다("오른쪽 크롬"이 "오"+"른쪽크롬"으로 쪼개지지 않게). `{position}` 슬롯에 알 수 없는 말이 오면 그 패턴은 맞지 않은 것으로 본다. 점수가 같으면 yaml에서 먼저 적힌 명령이 이기므로 `{position}` 명령을 `{app}` 명령보다 위에 둔다.
 - 저장소가 비어 있어서 `main`에 `.gitignore`만 있는 초기 커밋을 만들고, 기능은 PR #1(`claude/project-thread-n94tha`)로 올렸다.
 

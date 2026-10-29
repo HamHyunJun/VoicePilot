@@ -7,12 +7,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
 from dataclasses import replace
 
-from .base import DesktopController, Monitor, PlatformError, Rect, Window
+from .base import DesktopController, Monitor, PlatformError, Rect, Tab, Window
 
 log = logging.getLogger(__name__)
 
@@ -34,13 +35,25 @@ _ACTIVATE_IGNORING_OTHER_APPS = 1 << 1
 _AX_POINT = 1
 _AX_SIZE = 2
 _AX_MATCH_TOLERANCE = 8.0  # CG 창과 AX 창의 위치·크기 차이 허용치(px 합)
-# 버튼 이름 → (누름, 뗌, 버튼 번호) 이벤트. 모듈 import 실패 시에도 로딩되도록 클래스 안에서 참조하지 않는다.
-_MOUSE_EVENTS: dict[str, tuple] = {}
-if _IMPORT_ERROR is None:
-    _MOUSE_EVENTS = {
-        "left": (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp, Quartz.kCGMouseButtonLeft),
-        "right": (Quartz.kCGEventRightMouseDown, Quartz.kCGEventRightMouseUp, Quartz.kCGMouseButtonRight),
-    }
+# 탭을 다룰 수 있는 크롬 계열 브라우저 (CG 창의 앱 이름)
+_CHROMIUM_APPS = {"Google Chrome", "Brave Browser", "Microsoft Edge", "Chromium"}
+_OSASCRIPT_TIMEOUT = 5.0
+# 앱 이름이 아니라 프로세스 번호(pid)로 지정한다. 이름으로 지정하면 헤드리스 크롬처럼 같은 앱의 다른 인스턴스가
+# 떠 있을 때 엉뚱한 인스턴스가 응답한다. 창마다 번호, 위치·크기, 탭 제목·주소를 JSON으로 돌려준다.
+_LIST_TABS_JS = """
+var app = Application(__PID__);
+JSON.stringify(app.windows().map(function (w, i) {
+    var b = w.bounds();
+    return {n: i + 1, x: b.x, y: b.y, w: b.width, h: b.height, titles: w.tabs.title(), urls: w.tabs.url()};
+}))
+"""
+_SELECT_TAB_JS = """
+var app = Application(__PID__);
+var w = app.windows[__WINDOW__ - 1];
+w.activeTabIndex = __TAB__;
+w.index = 1;
+app.activate();
+"""
 
 
 class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 동작
@@ -119,6 +132,47 @@ class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 
             if pos is not None and size is not None and not err and title:
                 found.append((Rect(pos.x, pos.y, size.width, size.height), str(title)))
         return found
+
+    def list_tabs(self, windows: list[Window]) -> list[Tab]:
+        tabs: list[Tab] = []
+        for pid in sorted({w.pid for w in windows if w.app_name in _CHROMIUM_APPS}):
+            unused = [w for w in windows if w.pid == pid]  # 같은 위치의 창이 여럿이면 앞쪽부터 순서대로 짝지운다
+            script = _LIST_TABS_JS.replace("__PID__", str(pid))
+            for info in json.loads(self._osascript(script, unused[0].app_name)):
+                for i, w in enumerate(unused):
+                    b = w.bounds
+                    gap = abs(info["x"] - b.x) + abs(info["y"] - b.y) + abs(info["w"] - b.width) + abs(info["h"] - b.height)
+                    if gap <= _AX_MATCH_TOLERANCE:
+                        del unused[i]
+                        tabs += [Tab(w, n, t, info["n"], u) for n, (t, u) in enumerate(zip(info["titles"], info["urls"]), 1)]
+                        break
+        return tabs
+
+    def select_tab(self, tab: Tab) -> None:
+        if tab.window.app_name not in _CHROMIUM_APPS:
+            raise PlatformError(f"'{tab.window.app_name}'의 탭 전환은 지원하지 않습니다.")
+        script = (
+            _SELECT_TAB_JS.replace("__PID__", str(tab.window.pid))
+            .replace("__WINDOW__", str(tab.app_window_index))
+            .replace("__TAB__", str(tab.index))
+        )
+        self._osascript(script, tab.window.app_name)
+
+    @staticmethod
+    def _osascript(script: str, app_name: str) -> str:
+        try:
+            result = subprocess.run(
+                ["osascript", "-l", "JavaScript", "-e", script], capture_output=True, text=True, timeout=_OSASCRIPT_TIMEOUT
+            )
+        except subprocess.TimeoutExpired as e:
+            raise PlatformError(f"{app_name}가 응답하지 않습니다.") from e
+        if result.returncode != 0:
+            if "-1743" in result.stderr:  # errAEEventNotPermitted
+                raise PlatformError(
+                    f"{app_name} 탭을 읽으려면 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 허용해 주세요."
+                )
+            raise PlatformError(f"{app_name} 탭을 다루지 못했습니다: {result.stderr.strip()}")
+        return result.stdout
 
     def list_monitors(self) -> list[Monitor]:
         err, ids, count = Quartz.CGGetActiveDisplayList(16, None, None)
