@@ -43,7 +43,7 @@ class Settings:
     input_device: int | str | None = None
     commands_file: Path = PACKAGE_ROOT / "config" / "commands.yaml"
     match_threshold: float = 0.72
-    window_match_threshold: float = 0.6
+    window_match_threshold: float = 0.7
     sound: bool = True
 
 

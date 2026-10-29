@@ -31,6 +31,13 @@ _ACTIVATE_IGNORING_OTHER_APPS = 1 << 1
 # AXValue 종류 (pyobjc 상수가 없을 때를 대비한 기본값)
 _AX_POINT = 1
 _AX_SIZE = 2
+# 버튼 이름 → (누름, 뗌, 버튼 번호) 이벤트. 모듈 import 실패 시에도 로딩되도록 클래스 안에서 참조하지 않는다.
+_MOUSE_EVENTS: dict[str, tuple] = {}
+if _IMPORT_ERROR is None:
+    _MOUSE_EVENTS = {
+        "left": (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp, Quartz.kCGMouseButtonLeft),
+        "right": (Quartz.kCGEventRightMouseDown, Quartz.kCGEventRightMouseUp, Quartz.kCGMouseButtonRight),
+    }
 
 
 class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 동작
@@ -104,6 +111,22 @@ class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
         Quartz.CGWarpMouseCursorPosition(point)
         Quartz.CGAssociateMouseAndMouseCursorPosition(True)
+
+    def click(self, button: str = "left", count: int = 1) -> None:
+        if button not in _MOUSE_EVENTS:
+            raise PlatformError(f"지원하지 않는 마우스 버튼입니다: {button}")
+        down, up, mouse_button = _MOUSE_EVENTS[button]
+        pos = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
+        for click_state in range(1, count + 1):
+            for event_type in (down, up):
+                event = Quartz.CGEventCreateMouseEvent(None, event_type, pos, mouse_button)
+                # 클릭 횟수를 알려 줘야 앱이 더블클릭으로 인식한다.
+                Quartz.CGEventSetIntegerValueField(event, Quartz.kCGMouseEventClickState, click_state)
+                Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+
+    def scroll(self, lines: int) -> None:
+        event = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, lines)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
     # ---- 내부 ----
     def _raise_ax_window(self, window: Window) -> None:

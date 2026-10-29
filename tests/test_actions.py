@@ -38,6 +38,7 @@ def test_window_resolver_uses_aliases_and_fuzzy_match():
     assert resolver.resolve("chrome", windows).id == 102  # 앱 이름 일부
     assert resolver.resolve("github", windows).id == 102  # 창 제목
     assert resolver.resolve("없는앱", windows) is None
+    assert resolver.resolve("클롬", windows).id == 102  # 인식기가 "크롬"을 다르게 적은 경우
 
 
 def test_window_resolver_prefers_front_window_on_tie():
@@ -90,3 +91,53 @@ def test_unknown_action_and_custom_registration():
 
     ex.register("dance", lambda _ex, args: ActionResult(True, "춤"))
     assert ex.execute(_intent("dance")).message == "춤"
+
+
+def test_click_passes_button_and_count_to_controller():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl)
+    assert ex.execute(_intent("click")).ok
+    assert ex.execute(_intent("click", count=2)).ok
+    assert ex.execute(_intent("click", button="right")).ok
+    assert ctl.calls == [("click", "left", 1), ("click", "left", 2), ("click", "right", 1)]
+
+
+def test_scroll_down_is_negative_and_up_is_positive():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl)
+    assert ex.execute(_intent("scroll", direction="down")).ok
+    assert ex.execute(_intent("scroll", direction="up")).ok
+    assert ctl.calls == [("scroll", -10), ("scroll", 10)]
+
+
+def test_scroll_without_direction_fails():
+    ctl = DummyController()
+    assert not ActionExecutor(ctl).execute(_intent("scroll")).ok
+    assert ctl.calls == []
+
+
+def test_focus_window_with_position_only_searches_that_monitor():
+    # 크롬(102)은 오른쪽 모니터, 코드(101)는 왼쪽 모니터에 있다.
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"], "코드": ["Code"]}))
+    assert ex.execute(_intent("focus_window", target="크롬", position="right")).ok
+    assert ctl.calls[0] == ("focus_window", 102)
+
+    result = ex.execute(_intent("focus_window", target="크롬", position="left"))
+    assert not result.ok
+    assert len(ctl.calls) == 2  # 실패한 명령은 아무것도 하지 않는다
+
+
+def test_focus_window_with_unknown_position_fails():
+    ctl = DummyController()
+    result = ActionExecutor(ctl).execute(_intent("focus_window", target="크롬", position="옆쪽"))
+    assert not result.ok
+    assert ctl.calls == []
+
+
+def test_focus_window_with_monitor_index():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    assert ex.execute(_intent("focus_window", target="크롬", index=2)).ok
+    assert ctl.calls[0] == ("focus_window", 102)
+    assert not ex.execute(_intent("focus_window", target="크롬", index=1)).ok

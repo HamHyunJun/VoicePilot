@@ -22,6 +22,8 @@ _SLOT_RE = re.compile(r"\{(\w+)\}")
 
 # 슬롯 이름별 후처리. 지정되지 않은 슬롯은 조사만 떼어 낸다.
 _NUMBER_SLOTS = {"index", "number", "count"}
+# `{position}` 슬롯: 말한 방향을 resolve_monitor가 받는 이름으로 바꾼다. 모르는 말은 그대로 두어 실행기가 실패로 알린다.
+_POSITION_WORDS = {"왼쪽": "left", "오른쪽": "right", "가운데": "center", "중앙": "center", "메인": "main"}
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class _Pattern:
     raw: str
     slots: list[str]
     regex: re.Pattern[str] | None
+    # 슬롯이 여러 개인 패턴용: 마지막 글자를 있어도 없어도 되고 다른 글자여도 되게 느슨하게 만든 정규식
+    loose_regex: re.Pattern[str] | None = None
     # 퍼지 매칭용: 슬롯 앞뒤의 고정 문구
     prefix: str = ""
     suffix: str = ""
@@ -81,12 +85,18 @@ def _compile(pattern: str) -> _Pattern:
         pos = m.end()
     parts.append(_loose_literal(text[pos:]))
     regex = re.compile("^" + "".join(parts) + "$")
+    loose_regex = None
+    tail = text[pos:].replace(" ", "")
+    if len(slots) > 1 and len(tail) >= 2:
+        loose_parts = parts[:-1] + [_loose_literal(tail[:-1]) + r"[가-힣]?\s*"]
+        loose_regex = re.compile("^" + "".join(loose_parts) + "$")
 
     first, last = _SLOT_RE.search(text), list(_SLOT_RE.finditer(text))[-1]
     return _Pattern(
         raw=text,
         slots=slots,
         regex=regex,
+        loose_regex=loose_regex,
         prefix=text[: first.start()].strip(),
         suffix=text[last.end() :].strip(),
     )
@@ -121,7 +131,8 @@ def _clean_slot(name: str, value: str) -> Any:
     value = value.strip()
     if name in _NUMBER_SLOTS:
         return parse_korean_number(value)
-    return strip_particle(value)
+    value = strip_particle(value)
+    return _POSITION_WORDS.get(value, value) if name == "position" else value
 
 
 class CommandMatcher:
@@ -139,15 +150,18 @@ class CommandMatcher:
             return None
 
         best: Intent | None = None
+        best_slots = 0
         for cmd in self.commands:
             for pat in cmd._compiled:
                 result = self._score(pat, utterance)
                 if result is None:
                     continue
                 score, slots = result
-                if best is None or score > best.score:
+                # 점수가 같으면 슬롯이 많은 패턴이 더 구체적이다 ("오른쪽 화면 {target} 열어줘" > "오른쪽 화면").
+                if best is None or (round(score, 3), len(slots)) > (best.score, best_slots):
                     args = {**cmd.args, **slots}
                     best = Intent(cmd.id, cmd.action, args, round(score, 3), utterance)
+                    best_slots = len(slots)
 
         if best is None or best.score < self.threshold:
             return None
@@ -166,6 +180,14 @@ class CommandMatcher:
             slots = {name: _clean_slot(name, m.group(name)) for name in pat.slots}
             if all(v not in (None, "") for v in slots.values()):
                 return _specific_score(pat.literal_len, utterance), slots
+
+        if pat.loose_regex is not None:
+            m = pat.loose_regex.match(utterance)
+            if m:
+                slots = {name: _clean_slot(name, m.group(name)) for name in pat.slots}
+                if all(v not in (None, "") for v in slots.values()):
+                    # 마지막 글자는 맞았다고 볼 수 없으니 고정 문구에서 뺀다. 정확히 맞은 패턴보다 항상 낮다.
+                    return _specific_score(pat.literal_len - 1, utterance), slots
 
         # 단일 슬롯 패턴만 퍼지 매칭한다: 문장을 어절 경계에서 잘라 앞/뒤 문구와 비교
         if len(pat.slots) != 1:

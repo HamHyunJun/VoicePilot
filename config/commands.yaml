@@ -2,7 +2,7 @@
 #
 # 명령 추가 방법
 #   - id: 겹치지 않는 이름
-#     action: 실행할 동작 이름 (현재 focus_window, focus_monitor 지원)
+#     action: 실행할 동작 이름 (현재 focus_window, focus_monitor, click, scroll 지원)
 #     args: 동작에 넘길 고정 인자 (선택)
 #     patterns: 말할 문장들. {이름}은 슬롯으로, 말한 내용에서 값을 뽑는다.
 #
@@ -24,6 +24,27 @@ commands:
       - "{target} 보여줘"
       - "{target} 띄워줘"
       - "{target} 창"
+      - "{target} 열어줘"
+
+  # "2번 모니터에서 fork 열어줘": 번호로 모니터를 지정한다. 아래 {position} 명령과 점수가 같을 때 번호가 이기도록 위에 둔다.
+  - id: focus_window_on_monitor_index
+    action: focus_window
+    patterns:
+      - "{index} 화면 {target} 열어줘"
+      - "{index} 화면에서 {target} 열어줘"
+      - "{index} 모니터 {target} 열어줘"
+      - "{index} 모니터에서 {target} 열어줘"
+
+  # "오른쪽 화면 크롬 열어줘": 그 모니터에 있는 창으로만 찾는다.
+  - id: focus_window_on_monitor
+    action: focus_window
+    patterns:
+      - "{position} 화면 {target} 열어줘"
+      - "{position} 화면에서 {target} 열어줘"
+      - "{position} 화면의 {target} 열어줘"
+      - "{position} 모니터 {target} 열어줘"
+      - "{position} 모니터에서 {target} 열어줘"
+      - "{position} 모니터의 {target} 열어줘"
 
   # ---- 모니터 전환 ----
   # "{target} 넘어와"와 겹치지 않도록 자주 쓰는 문장을 통째로 적어 둔다.
@@ -85,6 +106,50 @@ commands:
       - "{index} 모니터로 넘어와"
       - "{index} 화면으로 넘어와"
 
+  # ---- 클릭·스크롤 (현재 커서 위치 기준) ----
+  - id: click
+    action: click
+    patterns:
+      - "클릭"
+      - "클릭해"
+      - "클릭해줘"
+      - "눌러"
+
+  - id: double_click
+    action: click
+    args: {count: 2}
+    patterns:
+      - "더블클릭"
+      - "더블클릭해"
+      - "더블 클릭해줘"
+
+  - id: right_click
+    action: click
+    args: {button: right}
+    patterns:
+      - "우클릭"
+      - "우클릭해"
+      - "오른쪽 클릭"
+      - "오른쪽 클릭해줘"
+
+  - id: scroll_down
+    action: scroll
+    args: {direction: down}
+    patterns:
+      - "스크롤 내려"
+      - "스크롤 내려줘"
+      - "아래로 스크롤"
+      - "아래로"
+
+  - id: scroll_up
+    action: scroll
+    args: {direction: up}
+    patterns:
+      - "스크롤 올려"
+      - "스크롤 올려줘"
+      - "위로 스크롤"
+      - "위로"
+
 # 말로 부르는 이름 → 실제 앱 이름 또는 창 제목 후보
 # 한글로 말해도 영어 앱 이름을 찾을 수 있게 연결해 둔다. 자유롭게 추가하세요.
 aliases:
@@ -105,3 +170,4 @@ aliases:
   캘린더: ["Calendar"]
   피그마: ["Figma"]
   줌: ["zoom.us"]
+  포크: ["Fork"]
