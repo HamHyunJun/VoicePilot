@@ -27,11 +27,12 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .                      # 전체 (macOS에서는 pyobjc 포함)
 pip install -r requirements-dev.txt   # 테스트용 최소 의존성
 
-python -m pytest                      # 단위 테스트 (현재 71개 + macOS 전용 1개)
+python -m pytest                      # 단위 테스트 (현재 97개, macOS에서는 macOS 전용 1개 포함)
 voicepilot --text --dry-run           # 키보드 입력 + 가짜 조작부로 전체 흐름 확인 (어느 OS든 가능)
 voicepilot --text                     # 키보드 입력 + 실제 macOS 창 조작
 voicepilot                            # 마이크 음성 모드
 voicepilot --list-windows / --list-monitors / --list-devices / -v
+voicepilot --install-login-item       # 로그인 시 자동 실행(LaunchAgent) 등록, --uninstall-login-item 으로 해제
 ```
 
 CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행. macOS 러너는 `tests/test_macos.py`로 pyobjc 호출도 확인한다.
@@ -60,8 +61,9 @@ CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행.
 | `assistant.py` | 호출어+명령 한 번에 → 즉시 실행. 호출어만 → `listen_timeout`초 LISTENING. `clock` 주입으로 테스트 |
 | `commands/matcher.py` | 패턴 `{slot}` → 정규식. 점수: 정확 일치 1.0 > 정규식 일치·포함 0.9~0.99(고정 문구 비율이 클수록 높음) > 자모 유사도. `index/number/count` 슬롯은 정수로 변환 |
 | `actions/targets.py` | 창 해석: 별칭 → 앱 이름/제목 일치·포함·유사도, 동점이면 앞쪽 창. 모니터: x좌표 순 정렬, left/right/center/main/next/prev/번호 |
-| `actions/executor.py` | `focus_window`(포커스 + 커서를 창 중앙), `focus_monitor`(해당 모니터 맨 앞 창 포커스 + 커서를 모니터 중앙). `register()`로 동작 추가 |
-| `platform/macos.py` | Quartz `CGWindowListCopyWindowInfo`(창), `CGGetActiveDisplayList`(모니터), AX API로 창 Raise, `NSRunningApplication.activateWithOptions_`, `CGWarpMouseCursorPosition` + 마우스 이동 이벤트 |
+| `actions/executor.py` | `focus_window`(포커스 + 커서를 창 중앙, `position`/`index`가 있으면 그 모니터의 창만 후보), `focus_monitor`(해당 모니터 맨 앞 창 포커스 + 커서를 모니터 중앙), `click`(button/count), `scroll`(direction, 10줄). `register()`로 동작 추가 |
+| `platform/macos.py` | Quartz `CGWindowListCopyWindowInfo`(창), `CGGetActiveDisplayList`(모니터), AX API로 창 Raise, `NSRunningApplication.activateWithOptions_`, `CGWarpMouseCursorPosition` + 마우스 이동 이벤트, 클릭은 `CGEventCreateMouseEvent`(클릭 횟수 필드), 스크롤은 `CGEventCreateScrollWheelEvent`(양수가 위) |
+| `platform/macos_login.py` | LaunchAgent plist 생성·`launchctl bootstrap/bootout`. 표준 라이브러리만 사용. 로그는 `~/Library/Logs/VoicePilot.log` |
 | `platform/dummy.py` | 테스트용. 샘플 모니터 2개(1920x1080, 2560x1440), 창 3개(Code, Chrome, ClaudeBoard). 호출을 `calls`에 기록 |
 
 좌표계: 주 모니터 왼쪽 위 (0,0), y는 아래로 증가하는 전역 좌표 (Quartz의 CG 좌표와 동일. NSScreen 좌표는 쓰지 않는다).
@@ -76,30 +78,35 @@ CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행.
 - **구체적인 패턴 우선:** "두 번째 화면으로 넘어와"가 `{target} 넘어와`가 아닌 `{index} 화면으로 넘어와`로 가도록 고정 문구 비율로 점수를 준다.
 - **한글 이름 → 영어 앱 이름은 `aliases`로 연결**한다(로마자 변환 없음). 예: 클로드보드 → ClaudeBoard.
 - 창 포커스는 AX로 대상 창을 먼저 Raise한 뒤 앱을 활성화한다(같은 앱의 여러 창 중 정확한 창을 앞으로 가져오기 위해). AX 창은 위치·크기·제목으로 CG 창과 대응시킨다.
+- **매칭 동점 규칙:** 점수가 같으면 슬롯이 많은 패턴이 이긴다. 슬롯이 여럿인 패턴은 마지막 글자가 달라져도("열어주") 고정 문구에서 1글자를 뺀 점수로 허용한다. 점수 비교는 반올림(소수 3자리) 기준.
+- **모니터 지정 창 열기:** `{position}`(왼쪽/오른쪽/가운데/중앙/메인 → left/right/center/main)과 `{index}` 슬롯. "화면에서/화면의/모니터에서" 같은 조사 변형은 패턴을 따로 적는다. 번호 명령(`focus_window_on_monitor_index`)은 position 명령보다 위에 둔다.
+- **창 해석 보강:** 별칭 키와 자모 유사도 0.85 이상이면 같은 별칭으로 본다("클롬"→"크롬"). `window_match_threshold`는 0.7 (0.6이면 chrome이 code로 잘못 매칭됨).
+- **LaunchAgent 권한:** 자동 실행 시 마이크·손쉬운 사용 권한은 터미널이 아니라 실제 실행 파일(`.../Python.framework/.../Python.app`)에 줘야 한다. `.venv/bin/python` 링크는 소용없다. 파이썬 버전이 바뀌면 경로가 달라지므로 권한을 다시 주고 `--install-login-item`을 다시 실행한다.
 - 저장소가 비어 있어서 `main`에 `.gitignore`만 있는 초기 커밋을 만들고, 기능은 PR #1(`claude/project-thread-n94tha`)로 올렸다.
 
 ## 검증 상태와 알려진 제한
 
 - Linux 클라우드와 GitHub Actions(ubuntu, macos)에서 단위 테스트 통과. macOS 러너에서 pyobjc 모니터·창 목록 조회 확인.
-- **아직 macOS 실기에서 확인하지 않은 것:** 실제 창 포커스(AX Raise), 커서 이동, 마이크 입력, Whisper 한국어 인식 품질, 효과음.
+- macOS 실기에서 확인함: 창·모니터 전환, 마이크 음성 인식(Whisper small), 로그인 항목 등록과 기동, 손쉬운 사용 권한 적용.
+- **아직 macOS 실기에서 확인하지 않은 것:** 클릭·더블클릭·우클릭·스크롤의 실제 동작(스크롤 방향이 트랙패드 설정과 맞는지 포함), 재부팅 후 자동 시작, 효과음.
   실기에서 문제가 나면 `platform/macos.py`와 `config/settings.yaml`의 `audio`/`wake` 임계값부터 확인한다.
 - `config.py`의 기본 경로(`PACKAGE_ROOT/config`)는 저장소에서 `pip install -e .`로 설치했을 때를 가정한다. 일반 설치(wheel)나 앱 번들로 배포하려면 설정 파일 위치를 `~/Library/Application Support/VoicePilot` 등으로 옮겨야 한다.
+- "열어줘"는 이미 떠 있는 창으로 이동할 뿐 꺼진 앱을 실행하지 않는다.
+- Whisper가 앱 이름을 다르게 적으면("크롬"→"크롭") 실패한다. 로그(`🗣` 줄)를 보고 `aliases`에 추가한다.
 - 다른 Space의 전체 화면 창은 `kCGWindowListOptionOnScreenOnly` 때문에 목록에 나오지 않는다.
-- macOS 권한: 마이크, 손쉬운 사용(창 Raise), 화면 기록(다른 앱 창 제목). 권한은 실행하는 터미널 앱에 부여된다.
+- macOS 권한: 마이크, 손쉬운 사용(창 Raise), 화면 기록(다른 앱 창 제목). 권한은 실행하는 터미널 앱에 부여된다(LaunchAgent로 실행할 때는 `Python.app`, 위 결정사항 참고).
 
 ## 남은 작업 (우선순위 순)
 
 1. **macOS 실기 검증과 수정** — `voicepilot --text`로 창/모니터 전환 확인 → 음성 모드에서 인식률·VAD 임계값 조정.
-2. **기본 조작 동작 추가** (`actions/executor.py`에 처리 함수, `DesktopController`에 추상 메서드, `macos.py`·`dummy.py`에 구현, `commands.yaml`에 패턴):
-   - 클릭/더블클릭/우클릭 (현재 커서 위치), 스크롤 위/아래 (`CGEventCreateScrollWheelEvent`)
+2. **기본 조작 동작 추가** (클릭·스크롤은 완료) (`actions/executor.py`에 처리 함수, `DesktopController`에 추상 메서드, `macos.py`·`dummy.py`에 구현, `commands.yaml`에 패턴):
    - 받아쓰기: "받아써" 후 다음 발화를 그대로 입력 (`CGEventKeyboardSetUnicodeString` 또는 클립보드 붙여넣기). 상태 기계에 DICTATION 상태 추가 필요
    - 엔터, 복사/붙여넣기/실행취소 등 단축키 (`CGEventCreateKeyboardEvent` + 수정키 플래그)
    - 창 최소화/최대화 (AX `AXMinimized`, 줌 버튼 또는 `AXFullScreen`)
-   - 앱 실행 (`NSWorkspace` 또는 `open -a`), "크롬 열어줘" — 별칭 재사용
+   - 앱 실행 (`NSWorkspace` 또는 `open -a`), 꺼진 앱 켜기 — 별칭 재사용
 3. **오버레이 피드백** — 인식한 명령을 화면 구석에 1~2초 표시. `Feedback` 프로토콜을 구현하는 새 클래스로 추가(AppKit `NSPanel`, 메인 스레드 주의).
 4. **메뉴 막대(트레이) 아이콘** — 켜기/끄기, 종료. `rumps` 또는 AppKit `NSStatusItem`. 음성 루프는 별도 스레드로.
-5. **로그인 시 자동 실행** — `~/Library/LaunchAgents/`에 plist 설치/제거 명령(`voicepilot --install-login-item` 등).
-6. 경량 오디오 웨이크워드 탐지기, Windows/Linux `DesktopController` 구현.
+5. 경량 오디오 웨이크워드 탐지기, Windows/Linux `DesktopController` 구현.
 
 ## 새 동작을 추가하는 순서 (예시)
 
