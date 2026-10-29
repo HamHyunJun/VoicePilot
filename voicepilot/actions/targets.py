@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..platform.base import Monitor, Window
+from ..platform.base import Monitor, Rect, Window
 from ..textutil import compact, similarity, strip_particle
 
 _ALIAS_SIMILARITY = 0.85
@@ -21,30 +21,54 @@ class WindowResolver:
         self.threshold = threshold
 
     def candidates_for(self, spoken: str) -> list[str]:
-        names = {spoken, strip_particle(spoken)}
-        for name in list(names):
-            names.update(self.aliases.get(compact(name), []))
+        return [name for name, _ in self._names(spoken)]
+
+    def _names(self, spoken: str) -> list[tuple[str, bool]]:
+        """(이름, 유사도 비교 허용 여부). 말한 이름만 유사도로 비교하고, 별칭 값은 정확히 일치·포함만 본다.
+
+        별칭 값까지 유사도로 비교하면 "google.com/maps"가 앱 이름 "Google Chrome"과 비슷하다고 판단되는 식으로 엉뚱한 창이 뽑힌다.
+        """
+        spoken_names = {spoken, strip_particle(spoken)}
+        aliased: set[str] = set()
+        for name in spoken_names:
+            aliased.update(self.aliases.get(compact(name), []))
             # 인식기가 살짝 다르게 적은 이름도 별칭으로 본다 ("클롬" → "크롬").
             for key, values in self.aliases.items():
                 if similarity(compact(name), key) >= _ALIAS_SIMILARITY:
-                    names.update(values)
-        return [n for n in names if compact(n)]
+                    aliased.update(values)
+        names = [(n, True) for n in spoken_names] + [(n, False) for n in aliased - spoken_names]
+        return [(n, fuzzy) for n, fuzzy in names if compact(n)]
 
-    def resolve(self, spoken: str, windows: list[Window]) -> Window | None:
-        names = self.candidates_for(spoken)
+    def best_title(self, spoken: str, titles: list[str]) -> int | None:
+        """제목 목록에서 말한 이름과 가장 비슷한 제목의 위치. 점수가 같으면 앞쪽이 이긴다."""
+        names = self._names(spoken)
+        best, best_score = None, 0.0
+        for i, title in enumerate(titles):
+            score = max(_score(name, _title_only(title), fuzzy) for name, fuzzy in names)
+            if score > best_score:
+                best, best_score = i, score
+        return best if best_score >= self.threshold else None
+
+    def resolve(self, spoken: str, windows: list[Window], titles_only: bool = False) -> Window | None:
+        """titles_only면 앱 이름은 보지 않고 창 제목만 비교한다 (이미 앱을 정한 뒤 그 앱의 창을 고를 때)."""
+        names = self._names(spoken)
         best: Window | None = None
         best_score = 0.0
         for window in windows:  # 앞쪽 창부터 보므로 동점이면 먼저 본 창이 남는다.
-            score = max(_score(name, window) for name in names)
+            score = max(_score(name, window, fuzzy, use_app=not titles_only) for name, fuzzy in names)
             if score > best_score:
                 best, best_score = window, score
         return best if best_score >= self.threshold else None
 
 
-def _score(name: str, window: Window) -> float:
+def _title_only(title: str) -> Window:
+    return Window(0, "", title, 0, Rect(0, 0, 0, 0))
+
+
+def _score(name: str, window: Window, fuzzy: bool = True, use_app: bool = True) -> float:
     needle = compact(name)
     scores = []
-    for hay, weight in ((window.app_name, 1.0), (window.title, 0.95)):
+    for hay, weight in ((window.app_name if use_app else "", 1.0), (window.title, 0.95)):
         h = compact(hay)
         if not h:
             continue
@@ -53,7 +77,7 @@ def _score(name: str, window: Window) -> float:
         elif len(needle) >= 2 and needle in h:
             # 제목 일부만 말한 경우 ("깃허브" 별칭 → "GitHub - Chrome")
             scores.append(0.85 * weight)
-        else:
+        elif fuzzy:
             scores.append(similarity(needle, h) * weight)
     return max(scores, default=0.0)
 

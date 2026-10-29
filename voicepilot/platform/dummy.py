@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from .base import DesktopController, Monitor, PlatformError, Rect, Window
+from dataclasses import replace
+
+from .base import DesktopController, Monitor, PlatformError, Rect, Tab, Window
 
 
 class DummyController(DesktopController):
@@ -13,6 +15,8 @@ class DummyController(DesktopController):
         self.windows = list(windows) if windows is not None else _sample_windows()
         self.monitors = list(monitors) if monitors is not None else _sample_monitors()
         self.apps = {"Google Chrome", "Safari", "Fork", "Notes"}  # launch_app이 찾을 수 있는 설치된 앱
+        self.tabs: dict[int, list] = {}  # 창 id → 탭 목록. 항목은 "제목" 또는 ("제목", "주소") (테스트용)
+        self.tabs_error: str | None = None  # 값이 있으면 list_tabs가 이 메시지로 실패한다
         self.calls: list[tuple] = []
         self.cursor: tuple[float, float] = (0.0, 0.0)
 
@@ -30,6 +34,21 @@ class DummyController(DesktopController):
     def move_cursor(self, x: float, y: float) -> None:
         self.calls.append(("move_cursor", x, y))
         self.cursor = (x, y)
+
+    def list_tabs(self, windows: list[Window]) -> list[Tab]:
+        if self.tabs_error:
+            raise PlatformError(self.tabs_error)
+        tabs = []
+        for n, w in enumerate(windows, 1):
+            for i, entry in enumerate(self.tabs.get(w.id, []), 1):
+                title, url = (entry, "") if isinstance(entry, str) else entry
+                tabs.append(Tab(w, i, title, app_window_index=n, url=url))
+        return tabs
+
+    def select_tab(self, tab: Tab) -> None:
+        self.calls.append(("select_tab", tab.window.id, tab.index))
+        # 창의 제목을 새로 선택한 탭 제목으로 바꿔 실제 동작을 흉내 낸다.
+        self.windows = [replace(w, title=tab.title) if w.id == tab.window.id else w for w in self.windows]
 
     def hide_app(self, window: Window) -> None:
         self.calls.append(("hide_app", window.pid))

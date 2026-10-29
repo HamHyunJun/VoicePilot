@@ -256,3 +256,77 @@ def test_focus_window_with_app_hints_when_titles_are_unreadable():
     windows = [Window(1, "Google Chrome", "", 12, Rect(0, 0, 800, 600))]
     result = _chrome_executor(DummyController(windows=windows)).execute(_intent("focus_window", app="크롬", target="npm"))
     assert not result.ok and "권한" in result.message
+
+
+def _tab_controller():
+    windows = [
+        Window(1, "Google Chrome", "npm | Home - Google Chrome", 12, Rect(2000, 0, 800, 600)),  # 오른쪽 모니터
+        Window(3, "Google Chrome", "Naver - Google Chrome", 12, Rect(100, 0, 800, 600)),  # 왼쪽 모니터
+    ]
+    ctl = DummyController(windows=windows)
+    ctl.tabs = {1: ["npm | Home", "후쿠오카시 - Google 지도", "에어비앤비 | 숙소"], 3: ["Naver", "Airbnb 호스트"]}
+    return ctl
+
+
+def test_focus_window_switches_to_hidden_tab():
+    ctl = _tab_controller()
+    ex = _chrome_executor(ctl)
+    result = ex.execute(_intent("focus_window", app="크롬", target="구글지도"))
+    assert result.ok and "지도" in result.message
+    assert ctl.calls[0] == ("select_tab", 1, 2)
+    assert ctl.calls[1][0] == "move_cursor"  # 창을 앞으로 가져오는 일은 select_tab이 한다
+
+
+def test_focus_window_finds_tab_without_app_and_does_not_launch():
+    ctl = _tab_controller()
+    ex = _chrome_executor(ctl)
+    assert ex.execute(_intent("focus_window", target="에어비앤비", launch_if_missing=True)).ok
+    assert ctl.calls[0][0] == "select_tab"
+    assert all(c[0] != "launch_app" for c in ctl.calls)
+
+
+def test_tab_search_respects_monitor():
+    ctl = _tab_controller()
+    ex = _chrome_executor(ctl)
+    # 왼쪽 모니터(창 3)에는 "Airbnb 호스트" 탭이 있다. 오른쪽 모니터에서는 "지도"를 찾는다.
+    assert ex.execute(_intent("focus_window", position="left", app="크롬", target="에어비앤비")).ok
+    assert ctl.calls[0] == ("select_tab", 3, 2)
+    assert not ex.execute(_intent("focus_window", position="left", app="크롬", target="구글지도")).ok
+
+
+def test_tab_failure_reports_reason():
+    ctl = _tab_controller()
+    ctl.tabs_error = "자동화에서 허용해 주세요."
+    result = _chrome_executor(ctl).execute(_intent("focus_window", app="크롬", target="구글지도"))
+    assert not result.ok and "자동화" in result.message
+
+
+def test_tab_is_found_by_url_when_title_differs():
+    windows = [Window(1, "Google Chrome", "Naver", 12, Rect(2000, 0, 800, 600))]
+    ctl = DummyController(windows=windows)
+    ctl.tabs = {1: [("Naver", "https://www.naver.com"), ("HamHyunJun/VoicePilot", "https://github.com/HamHyunJun/VoicePilot")]}
+    aliases = {"크롬": ["Google Chrome"], "깃허브": ["GitHub", "github.com"], "기터브": ["GitHub", "github.com"]}
+    ex = ActionExecutor(ctl, WindowResolver(aliases))
+    # 제목에는 "깃허브"도 "GitHub"도 없지만 주소에 github.com이 있다.
+    assert ex.execute(_intent("focus_window", app="크롬", target="깃허브")).ok
+    assert ctl.calls[0] == ("select_tab", 1, 2)
+    assert ex.execute(_intent("focus_window", app="크롬", target="기터브")).ok  # 인식기가 다르게 적은 표기
+    assert ctl.calls[2] == ("select_tab", 1, 2)
+
+
+def test_alias_value_is_not_fuzzy_matched_against_app_name():
+    # "google.com/maps"는 앱 이름 "Google Chrome"과 글자가 비슷하지만 창 매칭에 쓰이면 안 된다.
+    windows = [Window(1, "Google Chrome", "HamHyunJun/ClaudeBoard", 12, Rect(0, 0, 800, 600))]
+    resolver = WindowResolver({"구글지도": ["Google Maps", "google.com/maps"], "크롬": ["Google Chrome"]})
+    assert resolver.resolve("구글지도", windows) is None
+    assert resolver.resolve("크롬", windows).id == 1  # 정확히 일치하는 별칭은 그대로 된다
+    assert resolver.resolve("구글지도", windows, titles_only=True) is None
+
+
+def test_hidden_tab_wins_over_unrelated_window_of_same_app():
+    ctl = DummyController(windows=[Window(1, "Google Chrome", "HamHyunJun/ClaudeBoard", 12, Rect(0, 0, 800, 600))])
+    ctl.tabs = {1: [("HamHyunJun/ClaudeBoard", "https://github.com/x"), ("후쿠오카시 - Google 지도", "https://www.google.co.kr/maps/place/a")]}
+    aliases = {"크롬": ["Google Chrome"], "구글지도": ["Google Maps", "google.com/maps", "google.co.kr/maps"]}
+    result = ActionExecutor(ctl, WindowResolver(aliases)).execute(_intent("focus_window", app="크롬", target="구글지도"))
+    assert result.ok and "지도" in result.message
+    assert ctl.calls[0] == ("select_tab", 1, 2)

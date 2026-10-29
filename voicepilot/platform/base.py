@@ -45,6 +45,17 @@ class Monitor:
     is_main: bool = False
 
 
+@dataclass(frozen=True)
+class Tab:
+    """브라우저 창 안의 탭 하나. `index`는 창 안에서 1부터 세는 탭 번호, `app_window_index`는 앱이 세는 창 번호다."""
+
+    window: Window
+    index: int
+    title: str
+    app_window_index: int = 0
+    url: str = ""
+
+
 class PlatformError(RuntimeError):
     """OS 조작 중 발생한 오류 (권한 부족 등)."""
 
@@ -53,6 +64,14 @@ class DesktopController(ABC):
     @abstractmethod
     def list_windows(self) -> list[Window]:
         """보이는 일반 창 목록을 앞쪽(최근에 포커스된) 창부터 돌려준다."""
+
+    def list_tabs(self, windows: list[Window]) -> list[Tab]:
+        """주어진 창들 중 브라우저 창의 모든 탭(가려진 탭 포함)을 돌려준다. 지원하지 않으면 빈 목록."""
+        return []
+
+    def select_tab(self, tab: Tab) -> None:
+        """탭을 선택하고 그 창을 맨 앞으로 가져온다."""
+        raise PlatformError("이 OS에서는 탭 전환을 지원하지 않습니다.")
 
     @abstractmethod
     def list_monitors(self) -> list[Monitor]:

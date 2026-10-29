@@ -23,7 +23,7 @@ _SLOT_RE = re.compile(r"\{(\w+)\}")
 # 슬롯 이름별 후처리. 지정되지 않은 슬롯은 조사만 떼어 낸다.
 _NUMBER_SLOTS = {"index", "number", "count"}
 # `{position}` 슬롯: 말한 방향을 resolve_monitor가 받는 이름으로 바꾼다. 모르는 말이면 그 패턴은 맞지 않은 것으로 본다.
-_POSITION_WORDS = {"왼쪽": "left", "오른쪽": "right", "가운데": "center", "중앙": "center", "메인": "main"}
+_POSITION_WORDS = {"왼쪽": "left", "좌측": "left", "오른쪽": "right", "우측": "right", "가운데": "center", "중앙": "center", "메인": "main"}
 
 
 @dataclass(frozen=True)

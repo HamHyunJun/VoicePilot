@@ -19,7 +19,7 @@ stt:
 audio:
   start_ratio: 3.0       # 소음 대비 몇 배 크면 말소리로 볼지
   min_rms: 0.01          # 최소 말소리 크기
-  silence_ms: 700        # 이만큼 조용하면 발화 종료
+  silence_ms: 1000       # 이만큼 조용하면 발화 종료
   max_speech_s: 10.0
 
 input_device: null       # 마이크 장치 번호 또는 이름 (`voicepilot --list-devices`로 확인)

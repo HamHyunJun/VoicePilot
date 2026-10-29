@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..commands.matcher import Intent
-from ..platform.base import DesktopController, PlatformError, Window
+from ..platform.base import DesktopController, PlatformError, Tab, Window
 from .targets import WindowResolver, monitor_of_point, resolve_monitor, sort_monitors, topmost_window_on
 
 log = logging.getLogger(__name__)
@@ -67,6 +67,17 @@ def _scoped_windows(ex: ActionExecutor, args: dict[str, Any], windows: list[Wind
     return [w for w in windows if monitor.bounds.contains(*w.bounds.center)], "그 모니터에서 "
 
 
+def _find_tab(ex: ActionExecutor, target: str, windows: list[Window]) -> tuple[Tab | None, str]:
+    """창 제목에서 못 찾은 이름을 브라우저 탭 제목·주소에서 찾는다. 두 번째 값은 못 읽었을 때 붙일 안내 문구."""
+    try:
+        tabs = ex.controller.list_tabs(windows)
+    except PlatformError as e:
+        return None, f" ({e})"
+    # 제목과 주소를 한 목록에 번갈아 넣어 찾는다. ("깃허브" → 제목이 달라도 주소에 github.com이 있으면 찾음)
+    index = ex.resolver.best_title(target, [text for t in tabs for text in (t.title, t.url)])
+    return (tabs[index // 2] if index is not None else None), ""
+
+
 def _focus_window(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
     target = str(args.get("target", "")).strip()
     if not target:
@@ -80,20 +91,28 @@ def _focus_window(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
         if app_window is None:
             return ActionResult(False, f"{where}'{app}' 창을 찾지 못했습니다.")
         windows = [w for w in windows if w.pid == app_window.pid]
-    window = ex.resolver.resolve(target, windows)
+    window = ex.resolver.resolve(target, windows, titles_only=bool(app))  # 앱을 정했으면 제목만 본다
+    tab_hint = ""
+    if window is None:
+        # 가려진 탭일 수 있으니 브라우저 탭 제목도 찾아본다.
+        tab, tab_hint = _find_tab(ex, target, windows)
+        if tab is not None:
+            ex.controller.select_tab(tab)  # 창도 함께 맨 앞으로 가져온다
+            ex.controller.move_cursor(*tab.window.bounds.center)
+            return ActionResult(True, f"{tab.title} 탭으로 이동했습니다.")
     if window is None and app:
         hint = " 창 제목을 읽지 못했습니다. 손쉬운 사용 권한을 확인하세요." if not any(w.title for w in windows) else ""
-        return ActionResult(False, f"{where}'{app}' 창 중에 '{target}'을(를) 찾지 못했습니다.{hint}")
+        return ActionResult(False, f"{where}'{app}' 창 중에 '{target}'을(를) 찾지 못했습니다.{hint}{tab_hint}")
     if window is None:
         # 어느 모니터에도 창이 없으면 꺼진 앱으로 보고 실행한다. 다른 모니터에 창이 있으면 실행하지 않는다.
         if args.get("launch_if_missing") and ex.resolver.resolve(target, all_windows) is None:
             try:
                 result = _launch_app(ex, args)
             except PlatformError:
-                return ActionResult(False, f"'{target}' 창도 앱도 찾지 못했습니다.")
+                return ActionResult(False, f"'{target}' 창도 앱도 찾지 못했습니다.{tab_hint}")
             # 앱이 열리는 모니터는 macOS가 정한다. 지정한 모니터로 옮겨 주지는 못한다.
             return ActionResult(True, result.message + (" (모니터 위치는 지정할 수 없어요)" if where else ""))
-        return ActionResult(False, f"{where}'{target}' 창을 찾지 못했습니다.")
+        return ActionResult(False, f"{where}'{target}' 창을 찾지 못했습니다.{tab_hint}")
     ex.controller.focus_window(window)
     ex.controller.move_cursor(*window.bounds.center)
     label = window.title or window.app_name

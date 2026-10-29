@@ -209,5 +209,10 @@ aliases:
   줌: ["zoom.us"]
   포크: ["Fork"]
   엔피엠: ["npm"]
-  구글지도: ["Google Maps", "Google 지도", "지도"]
+  mpm: ["npm"]  # 인식기가 npm을 이렇게 적는 일이 있다
+  구글지도: ["Google Maps", "Google 지도", "지도", "google.com/maps", "google.co.kr/maps", "maps.google"]
+  깃허브: ["GitHub", "github.com"]
+  기터브: ["GitHub", "github.com"]  # 인식기가 깃허브를 이렇게 적는 일이 있다
+  기트허브: ["GitHub", "github.com"]
+  깃헙: ["GitHub", "github.com"]
   에어비앤비: ["Airbnb"]

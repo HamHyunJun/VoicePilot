@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from .base import DesktopController, Monitor, PlatformError, Rect, Window
+from .base import DesktopController, Monitor, PlatformError, Rect, Tab, Window
 from .dummy import DummyController
 
 
@@ -18,4 +18,4 @@ def create_controller(dry_run: bool = False) -> DesktopController:
     raise PlatformError(f"아직 지원하지 않는 OS입니다: {sys.platform}. `--dry-run`으로 동작을 확인할 수 있습니다.")
 
 
-__all__ = ["DesktopController", "DummyController", "Monitor", "PlatformError", "Rect", "Window", "create_controller"]
+__all__ = ["DesktopController", "DummyController", "Monitor", "PlatformError", "Rect", "Tab", "Window", "create_controller"]
