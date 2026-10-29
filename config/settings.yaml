@@ -27,3 +27,4 @@ commands_file: commands.yaml
 match_threshold: 0.72    # 명령 유사도 최소 점수
 window_match_threshold: 0.7
 sound: true              # 효과음 재생
+overlay: true            # "파일럿" 호출 시 화면 가운데에 듣는 중 애니메이션 (macOS)

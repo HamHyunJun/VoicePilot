@@ -5,13 +5,14 @@
 
 from __future__ import annotations
 
-from .base import DesktopController, Monitor, Rect, Window
+from .base import DesktopController, Monitor, PlatformError, Rect, Window
 
 
 class DummyController(DesktopController):
     def __init__(self, windows: list[Window] | None = None, monitors: list[Monitor] | None = None):
         self.windows = list(windows) if windows is not None else _sample_windows()
         self.monitors = list(monitors) if monitors is not None else _sample_monitors()
+        self.apps = {"Google Chrome", "Safari", "Fork", "Notes"}  # launch_app이 찾을 수 있는 설치된 앱
         self.calls: list[tuple] = []
         self.cursor: tuple[float, float] = (0.0, 0.0)
 
@@ -29,6 +30,17 @@ class DummyController(DesktopController):
     def move_cursor(self, x: float, y: float) -> None:
         self.calls.append(("move_cursor", x, y))
         self.cursor = (x, y)
+
+    def hide_app(self, window: Window) -> None:
+        self.calls.append(("hide_app", window.pid))
+        self.windows = [w for w in self.windows if w.pid != window.pid]
+
+    def launch_app(self, names: list[str]) -> str:
+        self.calls.append(("launch_app", tuple(names)))
+        for name in names:
+            if name in self.apps:
+                return name
+        raise PlatformError(f"'{names[0]}' 앱을 찾지 못했습니다.")
 
     def click(self, button: str = "left", count: int = 1) -> None:
         self.calls.append(("click", button, count))

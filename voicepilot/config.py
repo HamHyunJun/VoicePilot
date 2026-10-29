@@ -45,6 +45,7 @@ class Settings:
     match_threshold: float = 0.72
     window_match_threshold: float = 0.7
     sound: bool = True
+    overlay: bool = True  # 호출어를 들으면 화면 가운데에 로고 애니메이션 (macOS 음성 모드)
 
 
 def _build(cls, data: dict[str, Any] | None):

@@ -8,6 +8,7 @@ import sys
 
 from .app import build_assistant, run_text_loop, run_voice_loop
 from .config import load_settings
+from .feedback import ConsoleFeedback, OverlayFeedback
 from .platform import PlatformError, create_controller
 
 
@@ -72,7 +73,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{i}번 모니터{' (메인)' if m.is_main else ''}: {m.bounds}")
         return 0
 
-    assistant = build_assistant(settings, controller)
+    feedback = None
+    if settings.overlay and not args.text and sys.platform == "darwin":
+        feedback = OverlayFeedback(ConsoleFeedback(sound=settings.sound), timeout=settings.wake.listen_timeout)
+    assistant = build_assistant(settings, controller, feedback)
     try:
         if args.text:
             run_text_loop(assistant)

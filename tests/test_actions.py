@@ -141,3 +141,118 @@ def test_focus_window_with_monitor_index():
     assert ex.execute(_intent("focus_window", target="크롬", index=2)).ok
     assert ctl.calls[0] == ("focus_window", 102)
     assert not ex.execute(_intent("focus_window", target="크롬", index=1)).ok
+
+
+def test_launch_app_tries_alias_names_before_spoken_name():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome", "Chrome"]}))
+    result = ex.execute(_intent("launch_app", target="크롬"))
+    assert result.ok and "Google Chrome" in result.message
+    assert ctl.calls == [("launch_app", ("Google Chrome", "Chrome", "크롬"))]
+
+
+def test_launch_app_reports_missing_app_and_empty_target():
+    ex = ActionExecutor(DummyController())
+    assert not ex.execute(_intent("launch_app", target="없는앱")).ok
+    assert not ex.execute(_intent("launch_app")).ok
+
+
+def test_open_launches_app_only_when_no_window_exists():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"], "사파리": ["Safari"]}))
+    # 크롬 창은 있으므로 이동만 한다.
+    assert ex.execute(_intent("focus_window", target="크롬", launch_if_missing=True)).ok
+    assert ctl.calls[0] == ("focus_window", 102)
+    # 사파리 창은 없지만 설치돼 있으므로 실행한다.
+    result = ex.execute(_intent("focus_window", target="사파리", launch_if_missing=True))
+    assert result.ok and "실행" in result.message
+    # 창도 앱도 없으면 실패한다.
+    assert not ex.execute(_intent("focus_window", target="없는앱", launch_if_missing=True)).ok
+
+
+def test_open_with_monitor_launches_only_when_no_window_on_any_monitor():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"], "사파리": ["Safari"]}))
+    # 사파리는 어느 모니터에도 창이 없으므로 실행한다.
+    result = ex.execute(_intent("focus_window", target="사파리", position="right", launch_if_missing=True))
+    assert result.ok and "모니터 위치" in result.message
+    # 크롬 창은 오른쪽 모니터에 있으므로 왼쪽을 지정하면 다른 모니터에 있는 창이 있는 것이다. 실행하지 않고 실패한다.
+    before = len(ctl.calls)
+    assert not ex.execute(_intent("focus_window", target="크롬", position="left", launch_if_missing=True)).ok
+    assert len(ctl.calls) == before
+
+
+def test_focus_without_flag_does_not_launch():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"사파리": ["Safari"]}))
+    assert not ex.execute(_intent("focus_window", target="사파리")).ok
+    assert ctl.calls == []
+
+
+def test_hide_window_hides_app_and_it_can_be_launched_again():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    assert ex.execute(_intent("hide_window", target="크롬")).ok
+    assert ctl.calls == [("hide_app", 12)]
+    assert ctl.list_windows() and all(w.pid != 12 for w in ctl.list_windows())
+    # 숨긴 뒤에는 창이 없으므로 "열어줘"가 앱을 다시 실행한다.
+    assert ex.execute(_intent("focus_window", target="크롬", launch_if_missing=True)).message.endswith("실행했습니다.")
+
+
+def test_hide_window_respects_monitor_and_missing_target():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    assert not ex.execute(_intent("hide_window", target="크롬", position="left")).ok  # 크롬은 오른쪽 모니터
+    assert not ex.execute(_intent("hide_window", target="없는앱")).ok
+    assert not ex.execute(_intent("hide_window")).ok
+    assert ctl.calls == []
+
+
+def _chrome_windows():
+    # 크롬 창 3개(오른쪽 모니터 2개, 왼쪽 1개)와 다른 앱 창 하나
+    return [
+        Window(1, "Google Chrome", "npm | Home - Google Chrome", 12, Rect(2000, 0, 800, 600)),
+        Window(2, "Google Chrome", "Google 지도 - Google Chrome", 12, Rect(2100, 50, 800, 600)),
+        Window(3, "Google Chrome", "Airbnb - Google Chrome", 12, Rect(100, 0, 800, 600)),
+        Window(4, "Code", "npm-notes.md", 11, Rect(2200, 100, 800, 600)),
+    ]
+
+
+def _chrome_executor(ctl):
+    aliases = {"크롬": ["Google Chrome"], "구글지도": ["Google Maps", "Google 지도"], "에어비앤비": ["Airbnb"]}
+    return ActionExecutor(ctl, WindowResolver(aliases))
+
+
+def test_focus_window_picks_chrome_window_by_title():
+    ctl = DummyController(windows=_chrome_windows())
+    ex = _chrome_executor(ctl)
+    # npm은 코드(Code) 창 제목에도 있지만 "크롬에서"라고 했으므로 크롬 창만 본다.
+    assert ex.execute(_intent("focus_window", app="크롬", target="npm")).ok
+    assert ctl.calls[0] == ("focus_window", 1)
+    assert ex.execute(_intent("focus_window", app="크롬", target="구글지도")).ok
+    assert ctl.calls[2] == ("focus_window", 2)
+
+
+def test_focus_window_with_app_and_monitor():
+    ctl = DummyController(windows=_chrome_windows())
+    ex = _chrome_executor(ctl)
+    # 에어비앤비 창은 왼쪽 모니터에 있으므로 오른쪽을 지정하면 실패한다.
+    assert not ex.execute(_intent("focus_window", position="right", app="크롬", target="에어비앤비")).ok
+    assert ex.execute(_intent("focus_window", position="left", app="크롬", target="에어비앤비")).ok
+    assert ctl.calls[0] == ("focus_window", 3)
+
+
+def test_focus_window_with_app_never_launches_and_explains_failure():
+    ctl = DummyController(windows=_chrome_windows())
+    ex = _chrome_executor(ctl)
+    result = ex.execute(_intent("focus_window", app="크롬", target="없는사이트", launch_if_missing=True))
+    assert not result.ok and "찾지 못했습니다" in result.message
+    assert ctl.calls == []
+    # 앱 자체가 없을 때도 마찬가지
+    assert not ex.execute(_intent("focus_window", app="사파리", target="npm")).ok
+
+
+def test_focus_window_with_app_hints_when_titles_are_unreadable():
+    windows = [Window(1, "Google Chrome", "", 12, Rect(0, 0, 800, 600))]
+    result = _chrome_executor(DummyController(windows=windows)).execute(_intent("focus_window", app="크롬", target="npm"))
+    assert not result.ok and "권한" in result.message
