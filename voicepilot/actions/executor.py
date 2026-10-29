@@ -16,6 +16,8 @@ from .targets import WindowResolver, monitor_of_point, resolve_monitor, sort_mon
 
 log = logging.getLogger(__name__)
 
+_SCROLL_LINES = 10  # "스크롤 내려" 한 번에 움직일 줄 수
+
 
 @dataclass(frozen=True)
 class ActionResult:
@@ -54,9 +56,22 @@ def _focus_window(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
     target = str(args.get("target", "")).strip()
     if not target:
         return ActionResult(False, "어떤 창으로 갈지 알아듣지 못했습니다.")
-    window = ex.resolver.resolve(target, ex.controller.list_windows())
+    windows = ex.controller.list_windows()
+    position, index = args.get("position"), args.get("index")
+    where = ""
+    if position or index:
+        monitor = resolve_monitor(
+            ex.controller.list_monitors(),
+            position=str(position) if position else None,
+            index=int(index) if index else None,
+        )
+        if monitor is None:
+            return ActionResult(False, "해당 모니터를 찾지 못했습니다.")
+        windows = [w for w in windows if monitor.bounds.contains(*w.bounds.center)]
+        where = "그 모니터에서 "
+    window = ex.resolver.resolve(target, windows)
     if window is None:
-        return ActionResult(False, f"'{target}' 창을 찾지 못했습니다.")
+        return ActionResult(False, f"{where}'{target}' 창을 찾지 못했습니다.")
     ex.controller.focus_window(window)
     ex.controller.move_cursor(*window.bounds.center)
     label = window.title or window.app_name
@@ -90,7 +105,26 @@ def _focus_monitor(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, f"{number}번 모니터로 이동했습니다.")
 
 
+def _click(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
+    button = str(args.get("button", "left"))
+    count = int(args.get("count", 1))
+    ex.controller.click(button, count)
+    name = {"left": "왼쪽", "right": "오른쪽"}.get(button, button)
+    return ActionResult(True, f"{name} 버튼을 {'더블' if count == 2 else ''}클릭했습니다.")
+
+
+def _scroll(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
+    direction = args.get("direction")
+    if direction not in ("up", "down"):
+        return ActionResult(False, "스크롤 방향을 알아듣지 못했습니다.")
+    lines = int(args.get("lines", _SCROLL_LINES))
+    ex.controller.scroll(lines if direction == "up" else -lines)
+    return ActionResult(True, "위로 스크롤했습니다." if direction == "up" else "아래로 스크롤했습니다.")
+
+
 _DEFAULT_HANDLERS: dict[str, Handler] = {
     "focus_window": _focus_window,
     "focus_monitor": _focus_monitor,
+    "click": _click,
+    "scroll": _scroll,
 }

@@ -14,7 +14,7 @@ stt:
   compute_type: int8     # CPU에서는 int8이 가장 빠름
   beam_size: 1
   local_files_only: false   # true면 인터넷 접속 없이 로컬 캐시의 모델만 사용
-  initial_prompt: "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와."
+  initial_prompt: "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와. 오른쪽 화면에서 크롬 열어줘. 포크 열어줘."
 
 audio:
   start_ratio: 3.0       # 소음 대비 몇 배 크면 말소리로 볼지
@@ -25,5 +25,5 @@ audio:
 input_device: null       # 마이크 장치 번호 또는 이름 (`voicepilot --list-devices`로 확인)
 commands_file: commands.yaml
 match_threshold: 0.72    # 명령 유사도 최소 점수
-window_match_threshold: 0.6
+window_match_threshold: 0.7
 sound: true              # 효과음 재생

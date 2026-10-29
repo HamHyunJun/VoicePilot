@@ -65,3 +65,11 @@ class DesktopController(ABC):
     @abstractmethod
     def move_cursor(self, x: float, y: float) -> None:
         """마우스 커서를 전역 좌표 (x, y)로 옮긴다."""
+
+    @abstractmethod
+    def click(self, button: str = "left", count: int = 1) -> None:
+        """현재 커서 위치를 클릭한다. button은 "left"/"right", count=2면 더블클릭."""
+
+    @abstractmethod
+    def scroll(self, lines: int) -> None:
+        """현재 커서 위치에서 스크롤한다. 양수는 위로, 음수는 아래로 `lines`줄."""

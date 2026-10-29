@@ -15,6 +15,9 @@
 | "파일럿, 왼쪽 화면" / "오른쪽 모니터로 넘어와" | 해당 모니터의 맨 앞 창에 포커스, 커서를 모니터 가운데로 이동 |
 | "파일럿, 2번 모니터" / "두 번째 화면으로 넘어와" | 왼쪽부터 센 번호로 모니터 선택 |
 | "파일럿, 다음 화면" | 지금 화면의 오른쪽 모니터로 (끝이면 처음으로) |
+| "파일럿, 오른쪽 화면 크롬 열어줘" | 오른쪽 모니터에 있는 크롬 창으로 포커스 (그 모니터에 없으면 실패) |
+| "파일럿, 클릭" / "더블클릭" / "우클릭" | 지금 커서 위치를 클릭 |
+| "파일럿, 스크롤 내려" / "위로 스크롤" | 커서가 있는 창을 10줄 스크롤 |
 
 띄어쓰기나 어미가 조금 달라도("클로드보드로 넘어와요", "넘어가") 가장 비슷한 명령을 찾습니다.
 
@@ -68,6 +71,8 @@ voicepilot --list-windows  # 인식 가능한 창 목록
 voicepilot --list-monitors # 모니터 번호 확인 (왼쪽부터 1번)
 voicepilot --list-devices  # 마이크 장치 목록
 voicepilot -v              # 인식된 문장 등 자세한 로그
+voicepilot --install-login-item    # 로그인할 때 자동 실행 등록 (터미널 없이 동작, 로그: ~/Library/Logs/VoicePilot.log)
+voicepilot --uninstall-login-item  # 자동 실행 해제
 ```
 
 처음에는 `voicepilot --text`로 "파일럿 크롬 보여줘"처럼 입력해 창 전환이 되는지 확인한 뒤, 음성 모드로 실행하는 것을 권합니다.
@@ -91,7 +96,7 @@ aliases:
 ```
 
 - 창 이름을 한글로 부를 때는 `aliases`에 실제 앱 이름(`voicepilot --list-windows`로 확인)을 연결해 주세요.
-- 현재 지원하는 동작: `focus_window`, `focus_monitor` (`args`의 `position`: left/right/center/main/next/prev, 또는 `{index}` 슬롯)
+- 현재 지원하는 동작: `focus_window`(`position` 지정 시 그 모니터의 창만), `focus_monitor`, `click`(`button`: left/right, `count`), `scroll`(`direction`: up/down) (`args`의 `position`: left/right/center/main/next/prev, 또는 `{index}` 슬롯)
 
 설정 파일을 따로 두고 싶으면 `config/settings.yaml`을 복사해 고친 뒤 `voicepilot --config 내설정.yaml`로 실행하세요.
 
@@ -131,4 +136,4 @@ macOS에서는 pyobjc로 실제 모니터·창 목록을 읽는 테스트도 함
 
 ## 다음 단계
 
-클릭·스크롤·받아쓰기·엔터·복사/붙여넣기·창 최소화/최대화·앱 실행, 오버레이 피드백, 메뉴 막대 아이콘, 로그인 시 자동 실행 순으로 추가합니다. 자세한 계획은 [docs/DESIGN.md](docs/DESIGN.md#6-단계별-계획)에 있습니다.
+받아쓰기·엔터·복사/붙여넣기·창 최소화/최대화·앱 실행, 오버레이 피드백, 메뉴 막대 아이콘 순으로 추가합니다. 자세한 계획은 [docs/DESIGN.md](docs/DESIGN.md#6-단계별-계획)에 있습니다.

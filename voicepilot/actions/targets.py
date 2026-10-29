@@ -5,6 +5,8 @@ from __future__ import annotations
 from ..platform.base import Monitor, Window
 from ..textutil import compact, similarity, strip_particle
 
+_ALIAS_SIMILARITY = 0.85
+
 
 class WindowResolver:
     """"클로드보드" 같은 이름을 열린 창 하나로 해석한다.
@@ -14,7 +16,7 @@ class WindowResolver:
     3. 점수가 같으면 앞쪽(최근에 쓴) 창을 고른다.
     """
 
-    def __init__(self, aliases: dict[str, list[str]] | None = None, threshold: float = 0.6):
+    def __init__(self, aliases: dict[str, list[str]] | None = None, threshold: float = 0.7):
         self.aliases = {compact(k): v for k, v in (aliases or {}).items()}
         self.threshold = threshold
 
@@ -22,6 +24,10 @@ class WindowResolver:
         names = {spoken, strip_particle(spoken)}
         for name in list(names):
             names.update(self.aliases.get(compact(name), []))
+            # 인식기가 살짝 다르게 적은 이름도 별칭으로 본다 ("클롬" → "크롬").
+            for key, values in self.aliases.items():
+                if similarity(compact(name), key) >= _ALIAS_SIMILARITY:
+                    names.update(values)
         return [n for n in names if compact(n)]
 
     def resolve(self, spoken: str, windows: list[Window]) -> Window | None:

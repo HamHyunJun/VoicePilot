@@ -30,6 +30,12 @@ class DummyController(DesktopController):
         self.calls.append(("move_cursor", x, y))
         self.cursor = (x, y)
 
+    def click(self, button: str = "left", count: int = 1) -> None:
+        self.calls.append(("click", button, count))
+
+    def scroll(self, lines: int) -> None:
+        self.calls.append(("scroll", lines))
+
 
 def _sample_monitors() -> list[Monitor]:
     return [

@@ -19,6 +19,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--list-windows", action="store_true", help="인식 가능한 창 목록 출력")
     p.add_argument("--list-monitors", action="store_true", help="모니터 목록 출력 (왼쪽부터)")
     p.add_argument("--list-devices", action="store_true", help="마이크 장치 목록 출력")
+    p.add_argument("--install-login-item", action="store_true", help="로그인할 때 자동으로 실행되도록 등록 (macOS)")
+    p.add_argument("--uninstall-login-item", action="store_true", help="로그인 시 자동 실행 해제 (macOS)")
     p.add_argument("-v", "--verbose", action="store_true", help="자세한 로그 출력")
     return p.parse_args(argv)
 
@@ -34,6 +36,22 @@ def main(argv: list[str] | None = None) -> int:
         import sounddevice as sd
 
         print(sd.query_devices())
+        return 0
+
+    if args.install_login_item or args.uninstall_login_item:
+        from .platform import macos_login
+
+        try:
+            if args.install_login_item:
+                path = macos_login.install(args.config)
+                print(f"등록했습니다: {path}\n로그는 {macos_login.log_path()} 에서 볼 수 있습니다.")
+            elif macos_login.uninstall():
+                print("자동 실행을 해제했습니다.")
+            else:
+                print("등록된 자동 실행이 없습니다.")
+        except PlatformError as e:
+            print(f"오류: {e}", file=sys.stderr)
+            return 1
         return 0
 
     try:
