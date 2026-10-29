@@ -1,0 +1,111 @@
+# CLAUDE.md
+
+이 파일은 Claude Code가 VoicePilot 저장소에서 작업할 때 참고하는 안내서다.
+사용자용 설명은 [README.md](README.md), 설계와 단계별 계획은 [docs/DESIGN.md](docs/DESIGN.md)에 있다.
+
+## 프로젝트 한 줄 요약
+
+마우스·키보드 없이 음성만으로 macOS를 조작하는 **로컬** 음성 제어 도우미(Python).
+"파일럿"(웨이크워드) → 명령 → faster-whisper로 로컬 인식 → YAML 명령 사전 매칭 → OS 조작.
+
+## 작업 규칙 (반드시 지킬 것)
+
+- **모든 설명, 코드 주석, 커밋 메시지, 사용자 출력 문자열은 한국어로 작성한다.**
+- 음성 인식은 인터넷 없이 로컬에서 동작해야 한다. 클라우드 STT/API를 추가하지 않는다.
+- **명령 인식부와 OS 조작부를 분리한다.** OS 전용 코드(pyobjc 등)는 `voicepilot/platform/<os>.py`에만 둔다.
+  `actions/`, `commands/`, `assistant.py` 등은 `platform/base.py`의 `DesktopController`와 데이터 타입만 import한다.
+- 새 명령 문장은 코드가 아니라 `config/commands.yaml`에 추가한다. 코드 수정은 새 **동작(action)** 이 필요할 때만 한다.
+- 무거운 의존성(sounddevice, faster_whisper, pyobjc)은 함수/생성자 안에서 지연 import 한다. 단위 테스트는 이것들 없이 돌아야 한다.
+- 새 기능에는 `DummyController`를 이용한 단위 테스트를 함께 추가한다. 테스트는 마이크·모델·실제 화면 없이 통과해야 한다.
+- 사용자 선호: 작업 시작 시 vibe-context 도구(`get_git_delta`, `search_past_memory`)로 변경 사항과 과거 결정을 확인하고,
+  끝나면 `save_session_summary`로 결정사항·아키텍처 규칙을 저장한다. 프로젝트가 등록되어 있지 않으면 `register_project`로 먼저 등록한다.
+
+## 실행·테스트 명령
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .                      # 전체 (macOS에서는 pyobjc 포함)
+pip install -r requirements-dev.txt   # 테스트용 최소 의존성
+
+python -m pytest                      # 단위 테스트 (현재 71개 + macOS 전용 1개)
+voicepilot --text --dry-run           # 키보드 입력 + 가짜 조작부로 전체 흐름 확인 (어느 OS든 가능)
+voicepilot --text                     # 키보드 입력 + 실제 macOS 창 조작
+voicepilot                            # 마이크 음성 모드
+voicepilot --list-windows / --list-monitors / --list-devices / -v
+```
+
+CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행. macOS 러너는 `tests/test_macos.py`로 pyobjc 호출도 확인한다.
+
+## 코드 구조와 데이터 흐름
+
+```
+마이크(audio/microphone.py)
+  → SpeechSegmenter(audio/segmenter.py)   에너지 VAD, 발화 단위 float32 배열
+  → WhisperRecognizer(stt/whisper_engine.py)   문장
+  → Assistant.handle_text(assistant.py)   상태 기계 IDLE ⇄ LISTENING
+      → WakeWordDetector.detect(wakeword.py)   호출어 + 나머지 명령 분리
+      → CommandMatcher.match(commands/matcher.py)   Intent(action, args, score)
+      → ActionExecutor.execute(actions/executor.py)   동작 이름 → 처리 함수
+          → WindowResolver / resolve_monitor (actions/targets.py)
+          → DesktopController (platform/base.py) → MacOSController(platform/macos.py)
+  → Feedback(feedback.py)   콘솔 출력 + afplay 효과음
+조립: app.py(build_assistant, run_text_loop, run_voice_loop), 진입점: __main__.py
+설정: config.py가 config/settings.yaml을 읽음, 명령은 commands/loader.py가 config/commands.yaml을 읽음
+```
+
+| 파일 | 핵심 내용 |
+|---|---|
+| `textutil.py` | `normalize`/`compact`, 한글 자모 분해 `to_jamo`, 자모 기반 `similarity`, 조사 제거 `strip_particle`, 한국어 숫자 `parse_korean_number` |
+| `wakeword.py` | 앞 1~2어절(감탄사 1개 허용)을 호출어 후보와 자모 유사도 비교. 임계값 기본 0.75 |
+| `assistant.py` | 호출어+명령 한 번에 → 즉시 실행. 호출어만 → `listen_timeout`초 LISTENING. `clock` 주입으로 테스트 |
+| `commands/matcher.py` | 패턴 `{slot}` → 정규식. 점수: 정확 일치 1.0 > 정규식 일치·포함 0.9~0.99(고정 문구 비율이 클수록 높음) > 자모 유사도. `index/number/count` 슬롯은 정수로 변환 |
+| `actions/targets.py` | 창 해석: 별칭 → 앱 이름/제목 일치·포함·유사도, 동점이면 앞쪽 창. 모니터: x좌표 순 정렬, left/right/center/main/next/prev/번호 |
+| `actions/executor.py` | `focus_window`(포커스 + 커서를 창 중앙), `focus_monitor`(해당 모니터 맨 앞 창 포커스 + 커서를 모니터 중앙). `register()`로 동작 추가 |
+| `platform/macos.py` | Quartz `CGWindowListCopyWindowInfo`(창), `CGGetActiveDisplayList`(모니터), AX API로 창 Raise, `NSRunningApplication.activateWithOptions_`, `CGWarpMouseCursorPosition` + 마우스 이동 이벤트 |
+| `platform/dummy.py` | 테스트용. 샘플 모니터 2개(1920x1080, 2560x1440), 창 3개(Code, Chrome, ClaudeBoard). 호출을 `calls`에 기록 |
+
+좌표계: 주 모니터 왼쪽 위 (0,0), y는 아래로 증가하는 전역 좌표 (Quartz의 CG 좌표와 동일. NSScreen 좌표는 쓰지 않는다).
+
+## 지금까지의 결정사항과 이유
+
+- **웨이크워드는 STT 결과 텍스트에서 찾는다.** 공개 한국어 웨이크워드 모델이 거의 없어서. 대신 발화마다 Whisper가 돌아 CPU를 쓴다.
+  `WakeWordDetector.detect()`의 반환 형식(`WakeResult`)만 맞추면 오디오 기반 탐지기(openWakeWord 사용자 모델 등)로 교체 가능.
+- **Whisper `initial_prompt`에 호출어·대표 명령을 넣는다.** "파일럿"을 다른 단어로 적는 일을 줄이기 위해.
+- **VAD는 numpy 에너지 기반**으로 직접 구현했다(소음 크기 자동 추적, pre-roll 300ms, 침묵 700ms면 종료, 최대 10초). 의존성을 줄이고 테스트를 쉽게 하려고.
+- **유사도는 difflib + 한글 자모 분해**로 계산한다(외부 퍼지 라이브러리 미사용). "넘어가"≈"넘어와", "파일롯"≈"파일럿" 처리.
+- **구체적인 패턴 우선:** "두 번째 화면으로 넘어와"가 `{target} 넘어와`가 아닌 `{index} 화면으로 넘어와`로 가도록 고정 문구 비율로 점수를 준다.
+- **한글 이름 → 영어 앱 이름은 `aliases`로 연결**한다(로마자 변환 없음). 예: 클로드보드 → ClaudeBoard.
+- 창 포커스는 AX로 대상 창을 먼저 Raise한 뒤 앱을 활성화한다(같은 앱의 여러 창 중 정확한 창을 앞으로 가져오기 위해). AX 창은 위치·크기·제목으로 CG 창과 대응시킨다.
+- 저장소가 비어 있어서 `main`에 `.gitignore`만 있는 초기 커밋을 만들고, 기능은 PR #1(`claude/project-thread-n94tha`)로 올렸다.
+
+## 검증 상태와 알려진 제한
+
+- Linux 클라우드와 GitHub Actions(ubuntu, macos)에서 단위 테스트 통과. macOS 러너에서 pyobjc 모니터·창 목록 조회 확인.
+- **아직 macOS 실기에서 확인하지 않은 것:** 실제 창 포커스(AX Raise), 커서 이동, 마이크 입력, Whisper 한국어 인식 품질, 효과음.
+  실기에서 문제가 나면 `platform/macos.py`와 `config/settings.yaml`의 `audio`/`wake` 임계값부터 확인한다.
+- `config.py`의 기본 경로(`PACKAGE_ROOT/config`)는 저장소에서 `pip install -e .`로 설치했을 때를 가정한다. 일반 설치(wheel)나 앱 번들로 배포하려면 설정 파일 위치를 `~/Library/Application Support/VoicePilot` 등으로 옮겨야 한다.
+- 다른 Space의 전체 화면 창은 `kCGWindowListOptionOnScreenOnly` 때문에 목록에 나오지 않는다.
+- macOS 권한: 마이크, 손쉬운 사용(창 Raise), 화면 기록(다른 앱 창 제목). 권한은 실행하는 터미널 앱에 부여된다.
+
+## 남은 작업 (우선순위 순)
+
+1. **macOS 실기 검증과 수정** — `voicepilot --text`로 창/모니터 전환 확인 → 음성 모드에서 인식률·VAD 임계값 조정.
+2. **기본 조작 동작 추가** (`actions/executor.py`에 처리 함수, `DesktopController`에 추상 메서드, `macos.py`·`dummy.py`에 구현, `commands.yaml`에 패턴):
+   - 클릭/더블클릭/우클릭 (현재 커서 위치), 스크롤 위/아래 (`CGEventCreateScrollWheelEvent`)
+   - 받아쓰기: "받아써" 후 다음 발화를 그대로 입력 (`CGEventKeyboardSetUnicodeString` 또는 클립보드 붙여넣기). 상태 기계에 DICTATION 상태 추가 필요
+   - 엔터, 복사/붙여넣기/실행취소 등 단축키 (`CGEventCreateKeyboardEvent` + 수정키 플래그)
+   - 창 최소화/최대화 (AX `AXMinimized`, 줌 버튼 또는 `AXFullScreen`)
+   - 앱 실행 (`NSWorkspace` 또는 `open -a`), "크롬 열어줘" — 별칭 재사용
+3. **오버레이 피드백** — 인식한 명령을 화면 구석에 1~2초 표시. `Feedback` 프로토콜을 구현하는 새 클래스로 추가(AppKit `NSPanel`, 메인 스레드 주의).
+4. **메뉴 막대(트레이) 아이콘** — 켜기/끄기, 종료. `rumps` 또는 AppKit `NSStatusItem`. 음성 루프는 별도 스레드로.
+5. **로그인 시 자동 실행** — `~/Library/LaunchAgents/`에 plist 설치/제거 명령(`voicepilot --install-login-item` 등).
+6. 경량 오디오 웨이크워드 탐지기, Windows/Linux `DesktopController` 구현.
+
+## 새 동작을 추가하는 순서 (예시)
+
+1. 필요한 OS 기능을 `platform/base.py`의 `DesktopController`에 추상 메서드로 추가 (OS 중립적인 이름·인자).
+2. `platform/dummy.py`에 기록용 구현, `platform/macos.py`에 실제 구현.
+3. `actions/executor.py`에 `_새동작(ex, args) -> ActionResult` 함수를 만들고 `_DEFAULT_HANDLERS`에 등록.
+4. `config/commands.yaml`에 `id`, `action`, `patterns` 추가.
+5. `tests/`에 매칭 테스트(test_matcher.py)와 동작 테스트(test_actions.py) 추가 후 `python -m pytest`.
+6. README의 "할 수 있는 것" 표와 "현재 지원하는 동작" 목록, docs/DESIGN.md의 단계별 계획 상태를 갱신.

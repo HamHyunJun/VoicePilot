@@ -1,0 +1,29 @@
+# VoicePilot 기본 설정
+# 이 파일을 복사해 고친 뒤 `voicepilot --config 내설정.yaml`로 실행할 수 있다.
+
+wake:
+  # 호출어 후보. 음성 인식기가 다르게 적는 표기도 함께 넣어 두면 잘 잡힌다.
+  words: ["파일럿", "파일롯", "pilot"]
+  threshold: 0.75        # 0~1, 높을수록 엄격
+  listen_timeout: 6.0    # 호출어만 말한 뒤 명령을 기다리는 시간(초)
+
+stt:
+  model: small           # tiny / base / small / medium / large-v3, 또는 내려받은 모델 폴더 경로
+  language: ko
+  device: auto           # auto / cpu / cuda
+  compute_type: int8     # CPU에서는 int8이 가장 빠름
+  beam_size: 1
+  local_files_only: false   # true면 인터넷 접속 없이 로컬 캐시의 모델만 사용
+  initial_prompt: "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와."
+
+audio:
+  start_ratio: 3.0       # 소음 대비 몇 배 크면 말소리로 볼지
+  min_rms: 0.01          # 최소 말소리 크기
+  silence_ms: 700        # 이만큼 조용하면 발화 종료
+  max_speech_s: 10.0
+
+input_device: null       # 마이크 장치 번호 또는 이름 (`voicepilot --list-devices`로 확인)
+commands_file: commands.yaml
+match_threshold: 0.72    # 명령 유사도 최소 점수
+window_match_threshold: 0.6
+sound: true              # 효과음 재생

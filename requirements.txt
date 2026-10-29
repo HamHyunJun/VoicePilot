@@ -1,0 +1,7 @@
+pyyaml>=6.0
+numpy>=1.24
+sounddevice>=0.4.6
+faster-whisper>=1.0.0
+pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'
+pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'
+pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'
