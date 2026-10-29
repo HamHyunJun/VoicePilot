@@ -7,11 +7,11 @@ from voicepilot.commands.loader import parse_command_data
 @pytest.mark.parametrize(
     "text, action, args",
     [
-        ("클로드보드로 넘어와", "focus_window", {"target": "클로드보드"}),
-        ("크롬으로 넘어와", "focus_window", {"target": "크롬"}),
-        ("슬랙 보여줘", "focus_window", {"target": "슬랙"}),
-        ("클로드보드로넘어와", "focus_window", {"target": "클로드보드"}),  # 띄어쓰기 없음
-        ("클로드보드로 넘어와요", "focus_window", {"target": "클로드보드"}),  # 어미가 조금 다름
+        ("클로드보드로 넘어와", "focus_window", {"launch_if_missing": True, "target": "클로드보드"}),
+        ("크롬으로 넘어와", "focus_window", {"launch_if_missing": True, "target": "크롬"}),
+        ("슬랙 보여줘", "focus_window", {"launch_if_missing": True, "target": "슬랙"}),
+        ("클로드보드로넘어와", "focus_window", {"launch_if_missing": True, "target": "클로드보드"}),  # 띄어쓰기 없음
+        ("클로드보드로 넘어와요", "focus_window", {"launch_if_missing": True, "target": "클로드보드"}),  # 어미가 조금 다름
         ("왼쪽 화면", "focus_monitor", {"position": "left"}),
         ("오른쪽 모니터로 넘어와", "focus_monitor", {"position": "right"}),
         ("왼쪽 화면으로 넘어와", "focus_monitor", {"position": "left"}),
@@ -20,13 +20,24 @@ from voicepilot.commands.loader import parse_command_data
         ("2번 모니터", "focus_monitor", {"index": 2}),
         ("두 번째 화면으로 넘어와", "focus_monitor", {"index": 2}),
         ("다음 화면", "focus_monitor", {"position": "next"}),
-        ("크롬 열어줘", "focus_window", {"target": "크롬"}),
-        ("오른쪽 화면 크롬 열어줘", "focus_window", {"position": "right", "target": "크롬"}),
-        ("왼쪽 모니터 슬랙 열어줘", "focus_window", {"position": "left", "target": "슬랙"}),
-        ("오른쪽 화면에서 fork 열어줘", "focus_window", {"position": "right", "target": "fork"}),
-        ("왼쪽 모니터의 크롬 열어줘", "focus_window", {"position": "left", "target": "크롬"}),
-        ("2번 모니터에서 포크 열어줘", "focus_window", {"index": 2, "target": "포크"}),
-        ("오른쪽 화면에서 크롬 열어주", "focus_window", {"position": "right", "target": "크롬"}),  # 끝 글자가 잘림
+        ("크롬 열어줘", "focus_window", {"launch_if_missing": True, "target": "크롬"}),
+        ("크롬 보여줘", "focus_window", {"launch_if_missing": True, "target": "크롬"}),
+        ("오른쪽 화면 크롬 열어줘", "focus_window", {"launch_if_missing": True, "position": "right", "target": "크롬"}),
+        ("왼쪽 모니터 슬랙 열어줘", "focus_window", {"launch_if_missing": True, "position": "left", "target": "슬랙"}),
+        ("오른쪽 화면에서 fork 열어줘", "focus_window", {"launch_if_missing": True, "position": "right", "target": "fork"}),
+        ("왼쪽 모니터의 크롬 열어줘", "focus_window", {"launch_if_missing": True, "position": "left", "target": "크롬"}),
+        ("2번 모니터에서 포크 열어줘", "focus_window", {"launch_if_missing": True, "index": 2, "target": "포크"}),
+        ("오른쪽 화면에서 크롬 열어주", "focus_window", {"launch_if_missing": True, "position": "right", "target": "크롬"}),  # 끝 글자가 잘림
+        ("크롬 실행해줘", "focus_window", {"launch_if_missing": True, "target": "크롬"}),
+        ("사파리 켜줘", "focus_window", {"launch_if_missing": True, "target": "사파리"}),
+        ("오른쪽 화면 켜줘", "focus_monitor", {"position": "right"}),  # 모니터 전환이 앱 실행보다 구체적
+        ("포크 숨겨줘", "hide_window", {"target": "포크"}),
+        ("포크숨겨줘", "hide_window", {"target": "포크"}),
+        ("크롬 내려", "hide_window", {"target": "크롬"}),
+        ("왼쪽 화면에서 크롬 숨겨줘", "hide_window", {"position": "left", "target": "크롬"}),
+        ("오른쪽 크롬 화면에서 npm 열어줘", "focus_window", {"position": "right", "app": "크롬", "target": "npm"}),
+        ("크롬 화면에서 구글지도 열어줘", "focus_window", {"app": "크롬", "target": "구글지도"}),
+        ("크롬에서 npm 열어줘", "focus_window", {"app": "크롬", "target": "npm"}),
         ("클릭", "click", {}),
         ("클릭해줘", "click", {}),
         ("더블클릭", "click", {"count": 2}),

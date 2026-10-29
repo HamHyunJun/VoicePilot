@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
+from dataclasses import replace
 
 from .base import DesktopController, Monitor, PlatformError, Rect, Window
 
@@ -31,6 +33,7 @@ _ACTIVATE_IGNORING_OTHER_APPS = 1 << 1
 # AXValue 종류 (pyobjc 상수가 없을 때를 대비한 기본값)
 _AX_POINT = 1
 _AX_SIZE = 2
+_AX_MATCH_TOLERANCE = 8.0  # CG 창과 AX 창의 위치·크기 차이 허용치(px 합)
 # 버튼 이름 → (누름, 뗌, 버튼 번호) 이벤트. 모듈 import 실패 시에도 로딩되도록 클래스 안에서 참조하지 않는다.
 _MOUSE_EVENTS: dict[str, tuple] = {}
 if _IMPORT_ERROR is None:
@@ -75,7 +78,47 @@ class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 
                     bounds=rect,
                 )
             )
-        return windows
+        return self._fill_titles_from_ax(windows)
+
+    def _fill_titles_from_ax(self, windows: list[Window]) -> list[Window]:
+        """화면 기록 권한이 없으면 창 제목이 비어 있다. 손쉬운 사용(AX) API로 같은 위치·크기의 창 제목을 채운다.
+
+        CG 창 목록과 AX 창 목록은 둘 다 앞쪽 창부터라서, 위치·크기가 같은 창이 여럿이면 순서대로 짝지운다.
+        """
+        if not any(not w.title for w in windows) or not AX.AXIsProcessTrusted():
+            return windows
+        ax_by_pid: dict[int, list[tuple[Rect, str]]] = {}
+        result = []
+        for w in windows:
+            if w.title:
+                result.append(w)
+                continue
+            if w.pid not in ax_by_pid:
+                ax_by_pid[w.pid] = self._ax_window_titles(w.pid)
+            candidates = ax_by_pid[w.pid]
+            for i, (rect, title) in enumerate(candidates):
+                moved = abs(rect.x - w.bounds.x) + abs(rect.y - w.bounds.y)
+                resized = abs(rect.width - w.bounds.width) + abs(rect.height - w.bounds.height)
+                if moved + resized <= _AX_MATCH_TOLERANCE:
+                    del candidates[i]  # 같은 AX 창을 두 번 쓰지 않는다
+                    w = replace(w, title=title)
+                    break
+            result.append(w)
+        return result
+
+    def _ax_window_titles(self, pid: int) -> list[tuple[Rect, str]]:
+        app_el = AX.AXUIElementCreateApplication(pid)
+        err, ax_windows = AX.AXUIElementCopyAttributeValue(app_el, AX.kAXWindowsAttribute, None)
+        if err or not ax_windows:
+            return []
+        found = []
+        for ax_win in ax_windows:
+            pos = self._ax_value(ax_win, AX.kAXPositionAttribute, getattr(AX, "kAXValueCGPointType", _AX_POINT))
+            size = self._ax_value(ax_win, AX.kAXSizeAttribute, getattr(AX, "kAXValueCGSizeType", _AX_SIZE))
+            err, title = AX.AXUIElementCopyAttributeValue(ax_win, AX.kAXTitleAttribute, None)
+            if pos is not None and size is not None and not err and title:
+                found.append((Rect(pos.x, pos.y, size.width, size.height), str(title)))
+        return found
 
     def list_monitors(self) -> list[Monitor]:
         err, ids, count = Quartz.CGGetActiveDisplayList(16, None, None)
@@ -111,6 +154,22 @@ class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
         Quartz.CGWarpMouseCursorPosition(point)
         Quartz.CGAssociateMouseAndMouseCursorPosition(True)
+
+    def hide_app(self, window: Window) -> None:
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(window.pid)
+        if app is None or not app.hide():
+            raise PlatformError(f"'{window.app_name}' 앱을 숨기지 못했습니다.")
+
+    def launch_app(self, names: list[str]) -> str:
+        for name in names:
+            # 말로 들어온 이름이라 경로나 옵션처럼 보이는 값은 시도하지 않는다.
+            if "/" in name or name.startswith("-"):
+                continue
+            # 이미 떠 있는 앱이면 앞으로 가져온다.
+            result = subprocess.run(["open", "-a", name], capture_output=True)
+            if result.returncode == 0:
+                return name
+        raise PlatformError(f"'{names[0]}' 앱을 찾지 못했습니다.")
 
     def click(self, button: str = "left", count: int = 1) -> None:
         if button not in _MOUSE_EVENTS:

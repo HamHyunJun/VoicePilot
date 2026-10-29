@@ -22,7 +22,7 @@ _SLOT_RE = re.compile(r"\{(\w+)\}")
 
 # 슬롯 이름별 후처리. 지정되지 않은 슬롯은 조사만 떼어 낸다.
 _NUMBER_SLOTS = {"index", "number", "count"}
-# `{position}` 슬롯: 말한 방향을 resolve_monitor가 받는 이름으로 바꾼다. 모르는 말은 그대로 두어 실행기가 실패로 알린다.
+# `{position}` 슬롯: 말한 방향을 resolve_monitor가 받는 이름으로 바꾼다. 모르는 말이면 그 패턴은 맞지 않은 것으로 본다.
 _POSITION_WORDS = {"왼쪽": "left", "오른쪽": "right", "가운데": "center", "중앙": "center", "메인": "main"}
 
 
@@ -118,7 +118,9 @@ def normalize_pattern(pattern: str) -> str:
 
 def _loose_literal(text: str) -> str:
     chars = [re.escape(c) for c in text.replace(" ", "")]
-    return r"\s*" + r"\s*".join(chars) + r"\s*" if chars else r"\s*"
+    if not chars:
+        return r"\s+" if " " in text else r"\s*"  # 슬롯 두 개 사이의 공백은 꼭 있어야 한다
+    return r"\s*" + r"\s*".join(chars) + r"\s*"
 
 
 def _specific_score(literal_len: int, utterance: str) -> float:
@@ -132,7 +134,9 @@ def _clean_slot(name: str, value: str) -> Any:
     if name in _NUMBER_SLOTS:
         return parse_korean_number(value)
     value = strip_particle(value)
-    return _POSITION_WORDS.get(value, value) if name == "position" else value
+    if name == "position":
+        return _POSITION_WORDS.get(value)  # 모르는 말이면 None → 이 패턴은 건너뛴다
+    return value
 
 
 class CommandMatcher:
