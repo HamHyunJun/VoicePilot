@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voicepilot"
+version = "0.1.0"
+description = "로컬 음성 제어 데스크톱 도우미"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+    "sounddevice>=0.4.6",
+    "faster-whisper>=1.0.0",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+voicepilot = "voicepilot.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["voicepilot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

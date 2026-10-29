@@ -1,0 +1,107 @@
+# VoicePilot 명령 사전
+#
+# 명령 추가 방법
+#   - id: 겹치지 않는 이름
+#     action: 실행할 동작 이름 (현재 focus_window, focus_monitor 지원)
+#     args: 동작에 넘길 고정 인자 (선택)
+#     patterns: 말할 문장들. {이름}은 슬롯으로, 말한 내용에서 값을 뽑는다.
+#
+# - 띄어쓰기·문장부호는 무시하고, 조금 다르게 말해도 가장 비슷한 명령을 고른다.
+# - 슬롯 값 끝의 조사("로", "으로", "에" 등)는 자동으로 떼어 낸다.
+# - {index} 슬롯은 "1번", "두 번째" 같은 표현을 숫자로 바꾼다.
+
+commands:
+  # ---- 창 전환 ----
+  - id: focus_window
+    action: focus_window
+    patterns:
+      - "{target} 넘어와"
+      - "{target} 넘어가"
+      - "{target} 가자"
+      - "{target} 가줘"
+      - "{target} 이동"
+      - "{target} 전환"
+      - "{target} 보여줘"
+      - "{target} 띄워줘"
+      - "{target} 창"
+
+  # ---- 모니터 전환 ----
+  # "{target} 넘어와"와 겹치지 않도록 자주 쓰는 문장을 통째로 적어 둔다.
+  - id: monitor_left
+    action: focus_monitor
+    args: {position: left}
+    patterns:
+      - "왼쪽 화면"
+      - "왼쪽 모니터"
+      - "왼쪽 화면으로 넘어와"
+      - "왼쪽 화면으로 가줘"
+      - "왼쪽 모니터로 넘어와"
+      - "왼쪽 모니터로 가줘"
+      - "왼쪽으로 넘어와"
+
+  - id: monitor_right
+    action: focus_monitor
+    args: {position: right}
+    patterns:
+      - "오른쪽 화면"
+      - "오른쪽 모니터"
+      - "오른쪽 화면으로 넘어와"
+      - "오른쪽 화면으로 가줘"
+      - "오른쪽 모니터로 넘어와"
+      - "오른쪽 모니터로 가줘"
+      - "오른쪽으로 넘어와"
+
+  - id: monitor_center
+    action: focus_monitor
+    args: {position: center}
+    patterns:
+      - "가운데 화면"
+      - "가운데 모니터"
+      - "가운데 화면으로 넘어와"
+      - "가운데 모니터로 넘어와"
+
+  - id: monitor_main
+    action: focus_monitor
+    args: {position: main}
+    patterns:
+      - "메인 화면"
+      - "메인 모니터"
+      - "메인 모니터로 넘어와"
+
+  - id: monitor_next
+    action: focus_monitor
+    args: {position: next}
+    patterns:
+      - "다음 화면"
+      - "다음 모니터"
+      - "다른 화면"
+      - "다른 모니터"
+
+  - id: monitor_index
+    action: focus_monitor
+    patterns:
+      - "{index} 모니터"
+      - "{index} 화면"
+      - "{index} 모니터로 넘어와"
+      - "{index} 화면으로 넘어와"
+
+# 말로 부르는 이름 → 실제 앱 이름 또는 창 제목 후보
+# 한글로 말해도 영어 앱 이름을 찾을 수 있게 연결해 둔다. 자유롭게 추가하세요.
+aliases:
+  클로드보드: ["ClaudeBoard", "Claude Board"]
+  클로드: ["Claude"]
+  크롬: ["Google Chrome", "Chrome"]
+  사파리: ["Safari"]
+  파인더: ["Finder"]
+  터미널: ["Terminal", "iTerm2", "iTerm"]
+  코드: ["Code", "Visual Studio Code"]
+  브이에스코드: ["Code", "Visual Studio Code"]
+  슬랙: ["Slack"]
+  카톡: ["KakaoTalk"]
+  카카오톡: ["KakaoTalk"]
+  노션: ["Notion"]
+  메모: ["Notes"]
+  메일: ["Mail"]
+  캘린더: ["Calendar"]
+  피그마: ["Figma"]
+  줌: ["zoom.us"]
