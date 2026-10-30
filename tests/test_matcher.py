@@ -47,6 +47,10 @@ from voicepilot.commands.loader import parse_command_data
         ("오른쪽 클릭", "click", {"button": "right"}),
         ("스크롤 내려", "scroll", {"direction": "down"}),
         ("위로 스크롤", "scroll", {"direction": "up"}),
+        ("크롬 열어서 후쿠오카 여행지 추천 찾아줘", "web_search", {"app": "크롬", "query": "후쿠오카 여행지 추천"}),
+        ("크롬 열어서 후쿠오카 여행지 추천 검색해줘", "web_search", {"app": "크롬", "query": "후쿠오카 여행지 추천"}),
+        ("크롬에서 맛집 찾아줘", "web_search", {"app": "크롬", "query": "맛집"}),
+        ("후쿠오카 날씨 검색해줘", "web_search", {"query": "후쿠오카 날씨"}),
     ],
 )
 def test_matches_default_commands(matcher, text, action, args):
@@ -90,3 +94,22 @@ def test_invalid_command_definitions_are_rejected():
         CommandSpec("x", "y", [])
     with pytest.raises(ValueError):
         CommandMatcher([CommandSpec("x", "a", ["가"]), CommandSpec("x", "b", ["나"])])
+
+
+@pytest.mark.parametrize(
+    "text, args",
+    [
+        ("크롬 열어서 후쿠오카 여행지 추천 알아봐줘", {"app": "크롬", "query": "후쿠오카 여행지 추천"}),
+        ("크롬 켜서 오사카 맛집 알려줘", {"app": "크롬", "query": "오사카 맛집"}),
+        ("크롬으로 도쿄 날씨 검색해주세요", {"app": "크롬", "query": "도쿄 날씨"}),
+        ("크롬 열고 부산 가볼만한 곳 찾아봐", {"app": "크롬", "query": "부산 가볼만한 곳"}),
+        ("제주도 렌터카 서치해줘", {"query": "제주도 렌터카"}),
+        ("우측 화면 크롬에서 후쿠오카 여행지 검색해줘", {"position": "right", "app": "크롬", "query": "후쿠오카 여행지"}),
+        ("오른쪽 크롬 화면에서 후쿠오카 여행지 검색해줘", {"position": "right", "app": "크롬", "query": "후쿠오카 여행지"}),
+        ("우측 화면에서 후쿠오카 여행지 검색해줘", {"position": "right", "query": "후쿠오카 여행지"}),
+    ],
+)
+def test_search_verbs_and_openers(matcher, text, args):
+    intent = matcher.match(text)
+    assert intent is not None and intent.action == "web_search", text
+    assert intent.args == args

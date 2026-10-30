@@ -330,3 +330,35 @@ def test_hidden_tab_wins_over_unrelated_window_of_same_app():
     result = ActionExecutor(ctl, WindowResolver(aliases)).execute(_intent("focus_window", app="크롬", target="구글지도"))
     assert result.ok and "지도" in result.message
     assert ctl.calls[0] == ("select_tab", 1, 2)
+
+
+def test_web_search_opens_google_in_named_app_or_default_browser():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome", "Chrome"]}))
+    result = ex.execute(_intent("web_search", app="크롬", query="후쿠오카 여행지 추천"))
+    assert result.ok and "Google Chrome" in result.message
+    url = "https://www.google.com/search?q=%ED%9B%84%EC%BF%A0%EC%98%A4%EC%B9%B4+%EC%97%AC%ED%96%89%EC%A7%80+%EC%B6%94%EC%B2%9C"
+    assert ctl.calls[-1] == ("open_url", url, ("Google Chrome", "Chrome", "크롬"))
+    assert ex.execute(_intent("web_search", query="날씨")).ok
+    assert ctl.calls[-1][2] == ()
+    assert not ex.execute(_intent("web_search", app="크롬")).ok
+    assert not ex.execute(_intent("web_search", app="없는앱", query="날씨")).ok
+
+
+def test_web_search_with_monitor_focuses_app_window_on_that_monitor_first():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    result = ex.execute(_intent("web_search", position="right", app="크롬", query="맛집"))
+    assert result.ok
+    assert [c[0] for c in ctl.calls] == ["focus_window", "open_url"]
+    # 왼쪽 모니터에는 크롬 창이 없으므로 검색하지 않고 실패한다.
+    before = len(ctl.calls)
+    assert not ex.execute(_intent("web_search", position="left", app="크롬", query="맛집")).ok
+    assert len(ctl.calls) == before
+
+
+def test_web_search_trailing_app_takes_last_word_as_app():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    result = ex.execute(_intent("web_search", trailing_app=True, app="여행지 크롬", query="후쿠오카"))
+    assert result.ok and "후쿠오카 여행지" in result.message and ctl.calls[-1][2][0] == "Google Chrome"

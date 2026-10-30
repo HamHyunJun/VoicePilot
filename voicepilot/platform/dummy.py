@@ -61,6 +61,13 @@ class DummyController(DesktopController):
                 return name
         raise PlatformError(f"'{names[0]}' 앱을 찾지 못했습니다.")
 
+    def open_url(self, url: str, app_names: list[str]) -> str:
+        self.calls.append(("open_url", url, tuple(app_names)))
+        for name in app_names or [""]:
+            if name == "" or name in self.apps:
+                return name
+        raise PlatformError(f"'{app_names[0]}' 앱을 찾지 못했습니다.")
+
     def click(self, button: str = "left", count: int = 1) -> None:
         self.calls.append(("click", button, count))
 

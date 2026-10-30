@@ -94,6 +94,10 @@ class DesktopController(ABC):
         """후보 이름을 차례로 시도해 처음 실행(또는 앞으로 가져오기)에 성공한 앱 이름을 돌려준다. 모두 실패하면 PlatformError."""
 
     @abstractmethod
+    def open_url(self, url: str, app_names: list[str]) -> str:
+        """주소를 연다. `app_names`를 차례로 시도해 처음 성공한 앱 이름을 돌려주고, 비어 있으면 기본 브라우저로 연다("")."""
+
+    @abstractmethod
     def click(self, button: str = "left", count: int = 1) -> None:
         """현재 커서 위치를 클릭한다. button은 "left"/"right", count=2면 더블클릭."""
 

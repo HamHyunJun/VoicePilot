@@ -27,7 +27,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .                      # 전체 (macOS에서는 pyobjc 포함)
 pip install -r requirements-dev.txt   # 테스트용 최소 의존성
 
-python -m pytest                      # 단위 테스트 (현재 133개, macOS에서는 macOS 전용 1개 포함)
+python -m pytest                      # 단위 테스트 (현재 156개, macOS에서는 macOS 전용 1개 포함)
 voicepilot --text --dry-run           # 키보드 입력 + 가짜 조작부로 전체 흐름 확인 (어느 OS든 가능)
 voicepilot --text                     # 키보드 입력 + 실제 macOS 창 조작
 voicepilot                            # 마이크 음성 모드
@@ -61,7 +61,7 @@ CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행.
 | `assistant.py` | 호출어+명령 한 번에 → 즉시 실행. 호출어만 → `listen_timeout`초 LISTENING. `clock` 주입으로 테스트 |
 | `commands/matcher.py` | 패턴 `{slot}` → 정규식. 점수: 정확 일치 1.0 > 정규식 일치·포함 0.9~0.99(고정 문구 비율이 클수록 높음) > 자모 유사도. `index/number/count` 슬롯은 정수로 변환 |
 | `actions/targets.py` | 창 해석: 별칭 → 앱 이름/제목 일치·포함·유사도, 동점이면 앞쪽 창. 모니터: x좌표 순 정렬, left/right/center/main/next/prev/번호 |
-| `actions/executor.py` | `focus_window`(포커스 + 커서를 창 중앙, `position`/`index`가 있으면 그 모니터의 창만 후보), `focus_monitor`(해당 모니터 맨 앞 창 포커스 + 커서를 모니터 중앙), `hide_window`(앱 전체 숨김, `NSRunningApplication.hide()`. 닫기·종료는 만들지 않음), `launch_app`(별칭으로 얻은 이름을 차례로 `open -a`), `click`(button/count), `scroll`(direction, 10줄). `register()`로 동작 추가 |
+| `actions/executor.py` | `focus_window`(포커스 + 커서를 창 중앙, `position`/`index`가 있으면 그 모니터의 창만 후보), `focus_monitor`(해당 모니터 맨 앞 창 포커스 + 커서를 모니터 중앙), `hide_window`(앱 전체 숨김, `NSRunningApplication.hide()`. 닫기·종료는 만들지 않음), `launch_app`(별칭으로 얻은 이름을 차례로 `open -a`), `web_search`(`query`를 구글 검색 주소로 만들어 `app` 브라우저(없으면 기본 브라우저)로 연다. 검색 엔진은 `executor.py`의 `_SEARCH_URL`), `click`(button/count), `scroll`(direction, 10줄). `register()`로 동작 추가 |
 | `platform/macos.py` | Quartz `CGWindowListCopyWindowInfo`(창), `CGGetActiveDisplayList`(모니터), AX API로 창 Raise, `NSRunningApplication.activateWithOptions_`, `CGWarpMouseCursorPosition` + 마우스 이동 이벤트, 클릭은 `CGEventCreateMouseEvent`(클릭 횟수 필드), 스크롤은 `CGEventCreateScrollWheelEvent`(양수가 위) |
 | `platform/macos_login.py` | LaunchAgent plist 생성·`launchctl bootstrap/bootout`. 표준 라이브러리만 사용. 로그는 `~/Library/Logs/VoicePilot.log` |
 | `platform/macos_overlay.py` | "파일럿" 호출 시 화면 가운데(커서가 있는 모니터)에 뜨는 3D 로고 애니메이션(윤곽선을 깊이 방향으로 겹쳐 쌓은 선 비행기 + 짐벌 고리 3개, Core Animation 3D만 사용). 환경 변수 `VOICEPILOT_OVERLAY_DEBUG_DIR`를 주면 장면을 PNG로 저장해 화면 기록 권한 없이도 모양을 확인할 수 있다(오프스크린 `renderInContext`는 3D를 그리지 못함). AppKit이 메인 스레드 이벤트 루프를 요구해서 **별도 프로세스**로 띄우고, `feedback.OverlayFeedback`이 stdin으로 `show 초`/`hide`를 보낸다. 포커스·마우스 입력은 가로채지 않는다. 설정 `overlay` |
@@ -73,8 +73,12 @@ CI: `.github/workflows/test.yml` — ubuntu, macos 러너에서 `pytest` 실행.
 
 - **웨이크워드는 STT 결과 텍스트에서 찾는다.** 공개 한국어 웨이크워드 모델이 거의 없어서. 대신 발화마다 Whisper가 돌아 CPU를 쓴다.
   `WakeWordDetector.detect()`의 반환 형식(`WakeResult`)만 맞추면 오디오 기반 탐지기(openWakeWord 사용자 모델 등)로 교체 가능.
+- **호출어 반응 속도(2단계 인식):** 대기(IDLE) 중에는 `stt.wake_model`(tiny, 0.2초)로 먼저 듣고, 1.5초 이하의 "파일럿"만 들렸으면 바로 반응한다. 명령이 붙었거나 호출어를 못 잡았거나 길면 `model`(small, 1.2~1.5초)로 다시 인식한다. 듣는 중(LISTENING)은 small만. 측정(TTS 음성): "파일럿" 반응 2.31s → 0.66s, 한 번에 말한 명령은 그대로(2.5s). tiny는 "구글지도"를 "그 글지도"로 적는 등 정확도가 떨어져서 명령 인식에는 쓰지 않는다. `wake_model: ""`이면 끈다.
+- **패턴 선택지:** `commands.yaml` 패턴에 `(찾아줘|검색해줘)`처럼 쓰면 `loader.expand_patterns`가 문장 여러 개로 푼다(슬롯 `{}`은 그대로). 검색 명령처럼 동사·접속 표현이 많을 때 쓴다.
+- **듣기 시간은 말하는 동안 멈춘다:** 호출어 뒤 6초 안에 긴 문장(5~6초)을 말하면 문장이 끝나고 인식(1~2초)이 끝났을 때는 이미 시간 초과라 명령이 호출어 없는 말로 무시되던 문제. `Assistant.hold()`를 음성 루프가 말하는 중·인식 중에 불러 시간을 다시 잰다. 무시된 말은 `…호출어 없이 들린 말(무시)`로 로그에 남긴다.
+- **끊겨 들어온 명령 잇기:** 모르는 명령이면 그 문장을 `listen_timeout`초 동안 기억하고, 호출어 없이 이어 말한 다음 문장에 붙여 다시 매칭한다("크롬에서" … "후쿠오카 맛집 찾아줘"). 짧은 발화는 0.5초 쉬면 끊기기 때문.
 - **Whisper `initial_prompt`에 호출어·대표 명령을 넣는다.** "파일럿"을 다른 단어로 적는 일을 줄이기 위해.
-- **VAD는 numpy 에너지 기반**으로 직접 구현했다(소음 크기 자동 추적, pre-roll 300ms, 침묵 700ms면 종료, 최대 10초). 의존성을 줄이고 테스트를 쉽게 하려고.
+- **VAD는 numpy 에너지 기반**으로 직접 구현했다(소음 크기 자동 추적, pre-roll 300ms, 침묵 700ms(설정 1000ms)면 종료, 1.2초보다 짧은 발화는 500ms면 종료, 최대 10초). 의존성을 줄이고 테스트를 쉽게 하려고.
 - **유사도는 difflib + 한글 자모 분해**로 계산한다(외부 퍼지 라이브러리 미사용). "넘어가"≈"넘어와", "파일롯"≈"파일럿" 처리.
 - **구체적인 패턴 우선:** "두 번째 화면으로 넘어와"가 `{target} 넘어와`가 아닌 `{index} 화면으로 넘어와`로 가도록 고정 문구 비율로 점수를 준다.
 - **한글 이름 → 영어 앱 이름은 `aliases`로 연결**한다(로마자 변환 없음). 예: 클로드보드 → ClaudeBoard.
