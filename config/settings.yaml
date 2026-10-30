@@ -5,16 +5,17 @@ wake:
   # 호출어 후보. 음성 인식기가 다르게 적는 표기도 함께 넣어 두면 잘 잡힌다.
   words: ["파일럿", "파일롯", "pilot"]
   threshold: 0.75        # 0~1, 높을수록 엄격
-  listen_timeout: 6.0    # 호출어만 말한 뒤 명령을 기다리는 시간(초)
+  listen_timeout: 8.0    # 호출어만 말한 뒤 명령을 기다리는 시간(초). 말하는 중에는 시간이 멈춘다
 
 stt:
+  wake_model: tiny       # "파일럿"만 빠르게 확인하는 작은 모델 (빈 문자열이면 model 하나만 사용)
   model: small           # tiny / base / small / medium / large-v3, 또는 내려받은 모델 폴더 경로
   language: ko
   device: auto           # auto / cpu / cuda
   compute_type: int8     # CPU에서는 int8이 가장 빠름
-  beam_size: 1
+  beam_size: 3           # 클수록 정확하지만 느림 (1이 가장 빠름)
   local_files_only: false   # true면 인터넷 접속 없이 로컬 캐시의 모델만 사용
-  initial_prompt: "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와. 오른쪽 화면에서 크롬 열어줘. 포크 열어줘."
+  initial_prompt: "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와. 오른쪽 화면에서 크롬 열어줘. 포크 열어줘. 크롬 열어서 후쿠오카 여행지 추천 찾아줘. 도쿄 맛집 검색해줘. 오사카 날씨 알아봐줘. 제주도 가볼만한 곳 알려줘."
 
 audio:
   start_ratio: 3.0       # 소음 대비 몇 배 크면 말소리로 볼지

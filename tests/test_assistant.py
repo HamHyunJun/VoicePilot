@@ -45,3 +45,25 @@ def test_unknown_command_gives_feedback(assistant, feedback):
 def test_repeating_wake_word_while_listening(assistant):
     assistant.handle_text("파일럿")
     assert assistant.handle_text("파일럿 오른쪽 모니터").intent.args == {"position": "right"}
+
+
+def test_unknown_fragment_is_joined_with_next_utterance_without_wake_word(assistant, clock):
+    assert assistant.handle_text("파일럿 크롬에서").kind == "unknown"
+    out = assistant.handle_text("후쿠오카 맛집 찾아줘")
+    assert out.kind == "executed" and out.intent.args == {"app": "크롬", "query": "후쿠오카 맛집"}
+    assert assistant.handle_text("후쿠오카 맛집 찾아줘").kind == "ignored"  # 이어 붙이기는 한 번뿐
+    assistant.handle_text("파일럿 크롬에서")
+    clock.now += 100
+    assert assistant.handle_text("후쿠오카 맛집 찾아줘").kind == "ignored"  # 시간이 지나면 버린다
+
+
+def test_hold_keeps_listening_while_user_speaks_long_sentence(assistant, clock):
+    assistant.handle_text("파일럿")
+    for _ in range(3):  # 말하고 인식하는 동안 시간이 흘러도 hold가 시간 초과를 미룬다
+        clock.now += 4.0
+        assistant.hold()
+        assistant.tick()
+    assert assistant.state is State.LISTENING
+    clock.now += 100
+    assistant.tick()
+    assert assistant.state is State.IDLE

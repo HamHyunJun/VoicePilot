@@ -52,12 +52,19 @@ class Assistant:
         self.clock = clock
         self.state = State.IDLE
         self._deadline = 0.0
+        self._fragment = ""  # 모르는 명령으로 끝난 앞부분 ("크롬에서" 다음에 쉬었다 말한 경우를 잇기 위해)
+        self._fragment_until = 0.0
 
     def tick(self) -> None:
         """듣기 상태 시간 초과를 확인한다. 오디오 루프에서 주기적으로 부른다."""
         if self.state is State.LISTENING and self.clock() >= self._deadline:
             self.state = State.IDLE
             self.feedback.on_timeout()
+
+    def hold(self) -> None:
+        """말하는 중이거나 인식 중에는 듣기 시간이 흘러가지 않게 시간 초과를 다시 잰다."""
+        if self.state is State.LISTENING:
+            self._deadline = self.clock() + self.listen_timeout
 
     def handle_text(self, text: str) -> Outcome:
         self.tick()
@@ -68,6 +75,8 @@ class Assistant:
         if self.state is State.IDLE:
             wake = self.wake.detect(text)
             if not wake.detected:
+                if self._fragment and self.clock() < self._fragment_until:
+                    return self._run_command(text)  # 앞부분과 이어 붙여 실행
                 return Outcome("ignored")
             if not wake.command:
                 self._start_listening()
@@ -89,9 +98,13 @@ class Assistant:
 
     def _run_command(self, command: str) -> Outcome:
         self.state = State.IDLE
+        if self._fragment and self.clock() < self._fragment_until:
+            command = f"{self._fragment} {command}"
+        self._fragment = ""
         self.feedback.on_heard(command)
         intent = self.matcher.match(command)
         if intent is None:
+            self._fragment, self._fragment_until = command, self.clock() + self.listen_timeout
             self.feedback.on_result(False, f"모르는 명령이에요: {command}")
             return Outcome("unknown")
         result = self.executor.execute(intent)

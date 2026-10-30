@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote_plus
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -16,6 +17,7 @@ from .targets import WindowResolver, monitor_of_point, resolve_monitor, sort_mon
 
 log = logging.getLogger(__name__)
 
+_SEARCH_URL = "https://www.google.com/search?q="
 _SCROLL_LINES = 10  # "스크롤 내려" 한 번에 움직일 줄 수
 
 
@@ -168,6 +170,32 @@ def _launch_app(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
     return ActionResult(True, f"{launched} 앱을 실행했습니다.")
 
 
+def _web_search(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
+    query = str(args.get("query", "")).strip()
+    if not query:
+        return ActionResult(False, "무엇을 검색할지 알아듣지 못했습니다.")
+    app = str(args.get("app", "")).strip()
+    if args.get("trailing_app") and " " in app:
+        # "{query} {app}으로"는 슬롯 경계를 못 가려서 app에 검색어 끝이 딸려 온다. 마지막 단어만 앱으로 본다.
+        head, _, app = app.rpartition(" ")
+        query = f"{query} {head}"
+    names = sorted(ex.resolver.candidates_for(app), key=lambda n: (n == app, -len(n))) if app else []
+    note = ""
+    if args.get("position") or args.get("index"):
+        if app:
+            # 그 모니터에 있는 앱 창을 먼저 앞으로 가져와야 새 탭이 그 창에 열린다.
+            windows, where = _scoped_windows(ex, args, ex.controller.list_windows())
+            window = ex.resolver.resolve(app, windows)
+            if window is None:
+                return ActionResult(False, f"{where}'{app}' 창을 찾지 못했습니다.")
+            ex.controller.focus_window(window)
+            names = [window.app_name]
+        else:
+            note = "(모니터를 정하려면 앱 이름도 말해 주세요) "
+    opened = ex.controller.open_url(_SEARCH_URL + quote_plus(query), names)
+    return ActionResult(True, f"{note}{opened + '에서 ' if opened else ''}'{query}'을(를) 검색했습니다.")
+
+
 def _click(ex: ActionExecutor, args: dict[str, Any]) -> ActionResult:
     button = str(args.get("button", "left"))
     count = int(args.get("count", 1))
@@ -190,6 +218,7 @@ _DEFAULT_HANDLERS: dict[str, Handler] = {
     "focus_monitor": _focus_monitor,
     "hide_window": _hide_window,
     "launch_app": _launch_app,
+    "web_search": _web_search,
     "click": _click,
     "scroll": _scroll,
 }

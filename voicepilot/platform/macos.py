@@ -225,6 +225,17 @@ class MacOSController(DesktopController):  # pragma: no cover - 실기에서만 
                 return name
         raise PlatformError(f"'{names[0]}' 앱을 찾지 못했습니다.")
 
+    def open_url(self, url: str, app_names: list[str]) -> str:
+        if not url.startswith(("http://", "https://")):
+            raise PlatformError("http(s) 주소만 열 수 있습니다.")
+        for name in app_names or [""]:
+            if "/" in name or name.startswith("-"):
+                continue
+            cmd = ["open", "-a", name, url] if name else ["open", url]
+            if subprocess.run(cmd, capture_output=True).returncode == 0:
+                return name
+        raise PlatformError(f"'{app_names[0]}' 앱으로 주소를 열지 못했습니다.")
+
     def click(self, button: str = "left", count: int = 1) -> None:
         if button not in _MOUSE_EVENTS:
             raise PlatformError(f"지원하지 않는 마우스 버튼입니다: {button}")

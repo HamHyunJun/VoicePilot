@@ -21,7 +21,7 @@ DEFAULT_SETTINGS = PACKAGE_ROOT / "config" / "settings.yaml"
 class WakeConfig:
     words: list[str] = field(default_factory=lambda: ["파일럿", "파일롯", "pilot"])
     threshold: float = 0.75
-    listen_timeout: float = 6.0
+    listen_timeout: float = 8.0
 
 
 @dataclass
@@ -32,6 +32,8 @@ class STTConfig:
     compute_type: str = "int8"
     beam_size: int = 1
     local_files_only: bool = False
+    # 호출어만 빠르게 확인하는 작은 모델. 빈 문자열이면 쓰지 않고 model 하나로 모두 인식한다.
+    wake_model: str = "tiny"
     initial_prompt: str = "파일럿, 왼쪽 화면, 오른쪽 모니터, 클로드보드로 넘어와."
 
 

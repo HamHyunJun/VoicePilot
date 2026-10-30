@@ -22,6 +22,10 @@ class SegmenterConfig:
     start_ratio: float = 3.0
     min_rms: float = 0.01
     silence_ms: int = 700
+    # 짧은 발화("파일럿")는 이만큼만 조용해도 끝난 것으로 본다. 반응이 빨라지고, 호출어 뒤에 쉬었다 말해도
+    # 호출어만 먼저 처리된 뒤 이어서 명령을 받으므로 문제가 없다.
+    short_speech_ms: int = 1200
+    short_silence_ms: int = 500
     min_speech_ms: int = 250
     max_speech_s: float = 10.0
     pre_roll_ms: int = 300
@@ -87,7 +91,9 @@ class SpeechSegmenter:
             self._silent_frames += 1
 
         too_long = len(self._speech) * frame_ms >= self.cfg.max_speech_s * 1000
-        if self._silent_frames * frame_ms >= self.cfg.silence_ms or too_long:
+        short = self._voiced_frames * frame_ms < self.cfg.short_speech_ms
+        wait_ms = min(self.cfg.silence_ms, self.cfg.short_silence_ms) if short else self.cfg.silence_ms
+        if self._silent_frames * frame_ms >= wait_ms or too_long:
             return self._finish()
         return None
 

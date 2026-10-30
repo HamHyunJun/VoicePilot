@@ -55,3 +55,14 @@ def test_flush_returns_ongoing_speech():
     _feed_in_blocks(seg, np.concatenate([_noise(0.3), _tone(0.5)]))
     assert seg.in_speech
     assert seg.flush() is not None
+
+
+def test_short_utterance_ends_sooner_than_long_one():
+    cfg = SegmenterConfig(silence_ms=1000, short_silence_ms=500, short_speech_ms=1200)
+    # 0.6초 말하고 0.6초 조용: 짧은 발화라 500ms 만에 끝난다.
+    short = _feed_in_blocks(SpeechSegmenter(cfg), np.concatenate([_noise(0.5), _tone(0.6), _noise(0.6, seed=1)]))
+    assert len(short) == 1
+    # 2초 말하고 0.6초 조용: 긴 발화는 1000ms를 기다리므로 아직 끝나지 않는다.
+    seg = SpeechSegmenter(cfg)
+    assert _feed_in_blocks(seg, np.concatenate([_noise(0.5), _tone(2.0), _noise(0.6, seed=1)])) == []
+    assert len(_feed_in_blocks(seg, _noise(0.6, seed=2))) == 1
