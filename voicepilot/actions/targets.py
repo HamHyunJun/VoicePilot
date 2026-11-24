@@ -6,6 +6,8 @@ from ..platform.base import Monitor, Rect, Window
 from ..textutil import compact, similarity, strip_particle
 
 _ALIAS_SIMILARITY = 0.85
+# "클로드 데스크탑 앱"처럼 이름 뒤에 붙는 말. 떼어도 앱을 가리키는 데 지장이 없다.
+_GENERIC_SUFFIXES = ("데스크탑", "데스크톱", "애플리케이션", "프로그램", "어플", "앱")
 
 
 class WindowResolver:
@@ -29,6 +31,8 @@ class WindowResolver:
         별칭 값까지 유사도로 비교하면 "google.com/maps"가 앱 이름 "Google Chrome"과 비슷하다고 판단되는 식으로 엉뚱한 창이 뽑힌다.
         """
         spoken_names = {spoken, strip_particle(spoken)}
+        spoken_names |= {_strip_generic(n) for n in list(spoken_names)}
+        spoken_names.discard("")
         aliased: set[str] = set()
         for name in spoken_names:
             aliased.update(self.aliases.get(compact(name), []))
@@ -59,6 +63,14 @@ class WindowResolver:
             if score > best_score:
                 best, best_score = window, score
         return best if best_score >= self.threshold else None
+
+
+def _strip_generic(name: str) -> str:
+    """끝에 붙은 "앱", "데스크탑" 같은 말을 (여러 개여도) 뗀다. 이름이 전부 그런 말이면 그대로 둔다."""
+    words = name.split()
+    while len(words) > 1 and words[-1] in _GENERIC_SUFFIXES:
+        words.pop()
+    return " ".join(words)
 
 
 def _title_only(title: str) -> Window:
