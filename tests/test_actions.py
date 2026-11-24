@@ -362,3 +362,11 @@ def test_web_search_trailing_app_takes_last_word_as_app():
     ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
     result = ex.execute(_intent("web_search", trailing_app=True, app="여행지 크롬", query="후쿠오카"))
     assert result.ok and "후쿠오카 여행지" in result.message and ctl.calls[-1][2][0] == "Google Chrome"
+
+
+def test_generic_suffix_like_app_or_desktop_is_ignored_when_resolving():
+    ctl = DummyController()
+    ex = ActionExecutor(ctl, WindowResolver({"크롬": ["Google Chrome"]}))
+    for spoken in ("크롬 데스크탑 앱", "크롬 앱", "크롬 데스크탑"):
+        assert ex.execute(_intent("focus_window", target=spoken, launch_if_missing=True)).ok, spoken
+        assert ("focus_window", 102) in ctl.calls[-2:]
